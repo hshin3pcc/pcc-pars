@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "PCC PARS Helper",
+  "version": "0.1.0",
+  "description": "Fast attendance entry for the PCC PARS form: mark a scrollable roster (All present + a few outliers) and push it into PARS. Never submits or certifies for you.",
+  "content_scripts": [
+    {
+      "matches": ["https://csweb-pub.pasadena.edu/pcc_pars/*"],
+      "js": ["src/core.js", "src/content.js"],
+      "css": ["src/panel.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"]
+}

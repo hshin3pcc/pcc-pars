@@ -1,0 +1,13 @@
+{
+  "name": "pcc-pars",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PARS attendance helper — a desktop browser extension that fills the PCC PARS attendance form from a fast capture grid (Phase 1). Phone capture + sync is Phase 2.",
+  "scripts": {
+    "test": "node test/test-core.js",
+    "build-pwa": "cp src/core.js pwa/core.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}

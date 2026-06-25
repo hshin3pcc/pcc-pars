@@ -1,0 +1,11 @@
+{
+  "name": "PARS Attendance",
+  "short_name": "PARS",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#16653e",
+  "theme_color": "#16653e",
+  "description": "Capture orchestra attendance on your phone, then push it to PARS from your Mac. Fully local."
+}

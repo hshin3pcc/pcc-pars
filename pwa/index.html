@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PARS">
+<meta name="theme-color" content="#16653e">
+<link rel="manifest" href="manifest.webmanifest">
+<title>PARS Attendance</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>PARS Attendance</h1>
+  <div class="sub" id="sub">No roster loaded</div>
+</header>
+
+<div id="loadbar">
+  <button id="loadbtn" class="ghost">⬇︎ Load roster</button>
+  <div id="loadbox" hidden>
+    <p class="hint">On your Mac: open PARS + the helper, click <b>📤 Copy roster for phone</b>, then paste here.</p>
+    <textarea id="rosterpaste" placeholder="Paste the roster blob here…" rows="3"></textarea>
+    <div class="row">
+      <button id="rosterload">Load</button>
+      <button id="rostercancel" class="ghost">Cancel</button>
+    </div>
+    <div id="loaderr" class="err"></div>
+  </div>
+</div>
+
+<div id="tools" hidden>
+  <button id="allpresent" class="primary">✓ All present</button>
+</div>
+
+<main id="list"></main>
+
+<footer id="foot" hidden>
+  <button id="copymarks" class="primary">📋 Copy marks for PARS</button>
+  <div id="status" class="status"></div>
+  <textarea id="marksout" hidden rows="3" readonly></textarea>
+  <button id="clearbtn" class="ghost" style="width:100%;margin-top:8px">Done — clear from phone</button>
+</footer>
+
+<script src="core.js"></script>
+<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+</script>
+</body>
+</html>

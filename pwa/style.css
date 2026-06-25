@@ -1,0 +1,45 @@
+:root { --green: #16653e; --red: #c0392b; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font: 16px/1.4 -apple-system, system-ui, sans-serif; color: #1c1c1e; background: #f2f2f4;
+  display: flex; flex-direction: column; min-height: 100vh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+header { background: var(--green); color: #fff; padding: 14px 16px; }
+header h1 { margin: 0; font-size: 18px; }
+header .sub { font-size: 13px; opacity: .9; margin-top: 2px; }
+
+#loadbar { padding: 10px 12px; }
+#loadbar .hint, .hint { font-size: 13px; color: #555; }
+.err { color: var(--red); font-size: 13px; min-height: 16px; }
+textarea { width: 100%; padding: 10px; border: 1px solid #c9c9cf; border-radius: 8px; font: 13px/1.4 ui-monospace, monospace; }
+.row { display: flex; gap: 8px; margin-top: 8px; }
+
+button { padding: 12px 14px; border-radius: 10px; border: 1px solid #c9c9cf; background: #fff; font-size: 15px; cursor: pointer; }
+button.primary { background: var(--green); color: #fff; border-color: var(--green); font-weight: 600; }
+button.ghost { background: transparent; }
+button:disabled { opacity: .5; }
+
+#tools { padding: 8px 12px; }
+#tools .primary { width: 100%; }
+
+main { flex: 1; overflow-y: auto; padding: 8px 12px; -webkit-overflow-scrolling: touch; }
+.card { background: #fff; border: 1px solid #e3e3e6; border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+.card.absent { background: #fdecec; border-color: #f3b9b9; }
+.card.partial { background: #fff7e6; border-color: #f0d28a; }
+.card .name { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.card .name .hrs { color: var(--green); font-weight: 700; white-space: nowrap; }
+.card.absent .name .hrs { color: var(--red); }
+.card .ctrls { display: flex; gap: 8px; align-items: flex-end; }
+.card .ctrls button { flex: 1; padding: 14px 8px; }
+.card .present.on { background: var(--green); color: #fff; border-color: var(--green); }
+.card .absent-btn.on { background: var(--red); color: #fff; border-color: var(--red); }
+.card .min { width: 92px; }
+.card .min label { display: block; font-size: 10px; color: #6b6b70; text-align: center; }
+.card .min input { width: 100%; padding: 13px 6px; border: 1px solid #c9c9cf; border-radius: 8px; text-align: center; font-size: 17px; }
+
+.empty { padding: 32px 18px; text-align: center; color: #6b6b70; }
+footer { padding: 12px; background: #fff; border-top: 1px solid #e3e3e6; }
+footer .primary { width: 100%; }
+.status { font-size: 13px; color: #444; min-height: 18px; margin-top: 8px; text-align: center; }
