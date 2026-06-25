@@ -14,13 +14,14 @@
 <body>
 <header>
   <h1>PARS Attendance</h1>
+  <select id="classsel" hidden></select>
   <div class="sub" id="sub">No roster loaded</div>
 </header>
 
 <div id="loadbar">
   <button id="loadbtn" class="ghost">⬇︎ Load roster</button>
   <div id="loadbox" hidden>
-    <p class="hint">On your Mac: open PARS + the helper, click <b>📤 Copy roster for phone</b>, then paste here.</p>
+    <p class="hint">On your Mac: in the helper, add each class with <b>➕ Add class to bundle</b>, then <b>📤 Copy bundle</b> — paste it here to load <b>all</b> your classes at once.</p>
     <textarea id="rosterpaste" placeholder="Paste the roster blob here…" rows="3"></textarea>
     <div class="row">
       <button id="rosterload">Load</button>

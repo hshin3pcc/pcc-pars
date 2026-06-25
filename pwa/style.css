@@ -9,6 +9,7 @@ body {
 header { background: var(--green); color: #fff; padding: 14px 16px; }
 header h1 { margin: 0; font-size: 18px; }
 header .sub { font-size: 13px; opacity: .9; margin-top: 2px; }
+header #classsel { margin-top: 8px; width: 100%; padding: 11px 10px; border-radius: 8px; border: none; font-size: 16px; background: #fff; color: #1c1c1e; }
 
 #loadbar { padding: 10px 12px; }
 #loadbar .hint, .hint { font-size: 13px; color: #555; }

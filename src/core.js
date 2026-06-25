@@ -135,12 +135,27 @@
   // ---- Phase-2 handoff codec: serialize the roster (Mac extension -> phone) and the marks (phone ->
   // Mac extension) as tagged plain-text blobs. Plain JSON (not base64) so it's unicode-safe, debuggable,
   // and survives Apple Universal Clipboard / AirDrop between Henry's own devices. No cloud. ----
-  function encodeRoster(roster) {
-    return 'PARSROSTER1 ' + JSON.stringify({
+  function toRosterBlob(roster) {
+    return (roster && roster.meta) ? {
       label: roster.meta.label, meetingDate: roster.meetingDate, multiMeeting: !!roster.meta.multiMeeting,
       scheduledMinutes: roster.meta.scheduledMinutes, fullHours: roster.meta.fullHours, unit: roster.meta.unit,
       students: (roster.students || []).map((s) => ({ iin: s.iin, name: s.name, seq: s.seq })),
-    });
+    } : roster;   // already a flat roster-blob object (e.g. round-tripped through storage)
+  }
+  function encodeRoster(roster) { return 'PARSROSTER1 ' + JSON.stringify(toRosterBlob(roster)); }
+  /** Bundle SEVERAL class rosters into one blob (Mac -> phone, "all classes at once"). */
+  function encodeBundle(rosters) { return 'PARSBUNDLE1 ' + JSON.stringify({ rosters: (rosters || []).map(toRosterBlob) }); }
+  function decodeBundle(text) {
+    const m = String(text || '').trim().match(/^PARSBUNDLE1\s+([\s\S]+)$/);
+    if (!m) return null;
+    try { const o = JSON.parse(m[1]); return (o && Array.isArray(o.rosters)) ? o.rosters.filter((r) => r && typeof r === 'object' && Array.isArray(r.students)) : null; } catch (_) { return null; }
+  }
+  /** Bundle SEVERAL classes' marks (phone -> Mac). entries: [{label, meetingDate, marks:[{iin,minutes}]}]. */
+  function encodeMarksBundle(entries) { return 'PARSMARKSB1 ' + JSON.stringify({ classes: entries || [] }); }
+  function decodeMarksBundle(text) {
+    const m = String(text || '').trim().match(/^PARSMARKSB1\s+([\s\S]+)$/);
+    if (!m) return null;
+    try { const o = JSON.parse(m[1]); return (o && Array.isArray(o.classes)) ? o.classes.filter((c) => c && typeof c === 'object' && Array.isArray(c.marks)) : null; } catch (_) { return null; }
   }
   function decodeRoster(text) {
     const m = String(text || '').trim().match(/^PARSROSTER1\s+([\s\S]+)$/);
@@ -156,5 +171,5 @@
     try { const o = JSON.parse(m[1]); return (o && Array.isArray(o.marks)) ? o : null; } catch (_) { return null; }
   }
 
-  return { round1, minutesToHours, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, encodeRoster, decodeRoster, encodeMarks, decodeMarks };
+  return { round1, minutesToHours, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle };
 });

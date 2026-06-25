@@ -1,84 +1,98 @@
 'use strict';
 
 /*
- * PARS Attendance PWA (Phase 2) — the phone capture app. Fully offline + local: the roster comes in by
- * pasting the blob the Mac extension copied (Apple Universal Clipboard), you mark attendance during/after
- * rehearsal, and you Copy the marks back to paste into the extension. NOTHING leaves your devices — no
- * server, no cloud. State persists in localStorage so it survives closing the app or losing signal.
+ * PARS Attendance PWA (Phase 2.1) — phone capture for MULTIPLE classes at once. Paste the bundle the Mac
+ * extension copied (all your classes) and switch between them with the dropdown — perfect for back-to-back
+ * rehearsals where you can't return to the computer. Fully offline + local: state persists in localStorage,
+ * and Copy marks hands everything back via Apple Universal Clipboard. NOTHING leaves your devices.
  */
 (function () {
   const C = window.PARSCore;
-  const LS_ROSTER = 'pars.roster', LS_MARKS = 'pars.marks';
-  let roster = null;     // { label, meetingDate, multiMeeting, scheduledMinutes, fullHours, unit, students:[{iin,name,seq}] }
-  let minutes = {};      // iin -> minutes present
+  const LS = 'pars.classes', LS_CUR = 'pars.current';
+  // classes: { [classKey]: { roster (flat blob), minutes: {iin->min} } } ; current = the selected classKey
+  let classes = {};
+  let current = null;
   let saveOk = true;
 
   const $ = (id) => document.getElementById(id);
-  const fullMin = () => (roster && roster.scheduledMinutes) || 195;
-  const unit = () => (roster && roster.unit) || 50;
+  const keyOf = (r) => `${r.label || '?'}||${r.meetingDate || '?'}`;
+  const cur = () => (current && classes[current]) || null;
+  const fullMin = () => (cur() ? cur().roster.scheduledMinutes : 195) || 195;
+  const unit = () => (cur() ? cur().roster.unit : 50) || 50;
   const hoursOf = (m) => C.minutesToHours(m, unit());
   const fmtDate = (d) => (d && d.length === 8) ? `${+d.slice(4, 6)}/${+d.slice(6, 8)}/${d.slice(0, 4)}` : (d || '');
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   function save() {
-    try { localStorage.setItem(LS_ROSTER, JSON.stringify(roster)); localStorage.setItem(LS_MARKS, JSON.stringify(minutes)); saveOk = true; }
+    try { localStorage.setItem(LS, JSON.stringify(classes)); localStorage.setItem(LS_CUR, current || ''); saveOk = true; }
     catch (_) { saveOk = false; status('⚠️ Couldn’t save on this device — Copy marks to PARS before closing the app.'); }
   }
   function restore() {
-    try {
-      roster = JSON.parse(localStorage.getItem(LS_ROSTER) || 'null');
-      minutes = JSON.parse(localStorage.getItem(LS_MARKS) || '{}') || {};
-    } catch (_) { roster = null; minutes = {}; }
+    try { classes = JSON.parse(localStorage.getItem(LS) || '{}') || {}; current = localStorage.getItem(LS_CUR) || null; } catch (_) { classes = {}; current = null; }
+    if (!current || !classes[current]) current = Object.keys(classes)[0] || null;
   }
 
-  function hasUnsavedMarks() {
-    return !!roster && roster.students.some((s) => minutes[s.iin] != null && minutes[s.iin] !== fullMin());
+  function addRoster(r) {
+    if (!r || !Array.isArray(r.students)) return { skipped: 'invalid' };
+    if (r.multiMeeting) return { skipped: `${r.label || 'a class'}: meets multiple days this week` };
+    if (!r.scheduledMinutes) return { skipped: `${r.label || 'a class'}: class length unreadable` };
+    r = Object.assign({}, r, { students: r.students.filter((s) => s && s.iin != null) });   // drop malformed students
+    const k = keyOf(r);
+    // Reconcile marks to THIS roster's students: keep a mark only for an IIN still present (genuine re-load),
+    // default new IINs to full. This both preserves marks on a true re-load and prevents a same-key collision
+    // from carrying another class's marks (foreign IINs are dropped).
+    const old = (classes[k] && classes[k].minutes) || {};
+    const m = {};
+    r.students.forEach((s) => { m[s.iin] = (old[s.iin] != null) ? old[s.iin] : r.scheduledMinutes; });
+    classes[k] = { roster: r, minutes: m };
+    return { key: k };
   }
+
+  /** Load a bundle (all classes) or a single roster blob; merge into the stored classes. */
   function loadRoster(text) {
-    const o = C.decodeRoster(text);
-    if (!o) return { ok: false };
-    if (o.multiMeeting) return { ok: false, err: 'This class meets more than one day this week — record it directly in PARS.' };
-    if (!o.scheduledMinutes) return { ok: false, err: 'Couldn’t read the class length — re-copy the roster on your Mac.' };
-    const changed = !roster || roster.meetingDate !== o.meetingDate || roster.label !== o.label;
-    if (changed && hasUnsavedMarks() && !confirm('Replace the current attendance? Marks you haven’t copied to PARS yet will be cleared.')) return { ok: false, cancelled: true };
-    roster = o;
-    if (changed) { minutes = {}; roster.students.forEach((s) => { minutes[s.iin] = fullMin(); }); }   // new week -> default all present
+    const bundle = C.decodeBundle(text);
+    const list = bundle || (C.decodeRoster(text) ? [C.decodeRoster(text)] : null);
+    if (!list) return { ok: false };
+    let added = 0; const skipped = [];
+    let firstKey = null;
+    list.forEach((r) => { const res = addRoster(r); if (res.key) { added++; if (!firstKey) firstKey = res.key; } else if (res.skipped) skipped.push(res.skipped); });
+    if (!added) return { ok: false, err: skipped[0] || 'No usable classes in that paste.' };
+    if (!current || !classes[current]) current = firstKey;
     save(); render();
-    return { ok: true };
-  }
-  function clearAll() {
-    if (!confirm('Clear the roster + attendance from this phone? Do this once the marks are in PARS.')) return;
-    roster = null; minutes = {}; saveOk = true;
-    try { localStorage.removeItem(LS_ROSTER); localStorage.removeItem(LS_MARKS); } catch (_) {}
-    status(''); render();
+    return { ok: true, added, skipped };
   }
 
   function setMin(iin, v) {
-    if (v === '' || v == null || (typeof v === 'string' && !v.trim())) return;   // blank = no change (don't flip to Absent)
+    if (!cur()) return;
+    if (v === '' || v == null || (typeof v === 'string' && !v.trim())) return;   // blank = no change
     const m = Math.round(Number(v));
     if (!Number.isFinite(m)) return;
-    minutes[iin] = Math.max(0, Math.min(fullMin(), m));
+    cur().minutes[iin] = Math.max(0, Math.min(fullMin(), m));
     save();
   }
-  function allPresent() { if (!roster) return; roster.students.forEach((s) => { minutes[s.iin] = fullMin(); }); save(); render(); }
+  function allPresent() { if (!cur()) return; cur().roster.students.forEach((s) => { cur().minutes[s.iin] = fullMin(); }); save(); render(); }
 
   function render() {
-    const list = $('list');
-    if (!roster) {
-      $('sub').textContent = 'No roster loaded';
-      $('tools').hidden = true; $('foot').hidden = true;
-      list.innerHTML = '<div class="empty">Tap <b>⬇︎ Load roster</b> above.<br><br>On your Mac, open PARS and the helper, click <b>📤 Copy roster for phone</b>, then paste it here.</div>';
+    const list = $('list'), sel = $('classsel');
+    const keys = Object.keys(classes);
+    if (!keys.length) {
+      sel.hidden = true; $('sub').textContent = 'No roster loaded'; $('tools').hidden = true; $('foot').hidden = true;
+      list.innerHTML = '<div class="empty">Tap <b>⬇︎ Load roster</b> above.<br><br>On your Mac, in the helper, <b>➕ Add</b> each class then <b>📤 Copy bundle</b>, and paste it here — all your classes load at once.</div>';
       return;
     }
-    $('sub').textContent = `${roster.label || 'Class'} · ${fmtDate(roster.meetingDate)} · ${roster.students.length} students`;
+    // class dropdown
+    sel.hidden = keys.length < 1 ? true : false;
+    sel.innerHTML = keys.map((k) => `<option value="${esc(k)}"${k === current ? ' selected' : ''}>${esc(classes[k].roster.label || k)} — ${esc(fmtDate(classes[k].roster.meetingDate))}</option>`).join('');
+    const r = cur().roster;
+    $('sub').textContent = `${fmtDate(r.meetingDate)} · ${r.students.length} students` + (keys.length > 1 ? ` · ${keys.length} classes loaded` : '');
     $('tools').hidden = false; $('foot').hidden = false;
     list.innerHTML = '';
-    roster.students.forEach((s) => list.appendChild(card(s)));
+    r.students.forEach((s) => list.appendChild(card(s)));
     if (!saveOk) status('⚠️ Couldn’t save on this device — Copy marks to PARS before closing.');
   }
 
   function card(s) {
-    const m = minutes[s.iin] != null ? minutes[s.iin] : fullMin();
+    const m = cur().minutes[s.iin] != null ? cur().minutes[s.iin] : fullMin();
     const present = m >= fullMin(), absent = m <= 0;
     const el = document.createElement('div');
     el.className = 'card' + (absent ? ' absent' : present ? '' : ' partial');
@@ -97,16 +111,21 @@
   }
 
   function copyMarks() {
-    const marks = roster.students.map((s) => ({ iin: s.iin, minutes: minutes[s.iin] != null ? minutes[s.iin] : fullMin() }));
-    const blob = C.encodeMarks({ label: roster.label, meetingDate: roster.meetingDate, marks });
-    const done = () => { status('Marks copied. On your Mac: helper → 📥 Paste marks → Fill PARS.'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(blob).then(done, () => showFallback(blob));
-    } else { showFallback(blob); }
+    const entries = Object.keys(classes).map((k) => {
+      const c = classes[k];
+      return { label: c.roster.label, meetingDate: c.roster.meetingDate, marks: c.roster.students.map((s) => ({ iin: s.iin, minutes: c.minutes[s.iin] != null ? c.minutes[s.iin] : c.roster.scheduledMinutes })) };
+    });
+    const blob = C.encodeMarksBundle(entries);
+    const done = () => status(`Copied ${entries.length} class(es). On your Mac: select a class in PARS → helper 📥 Paste marks → Fill. Repeat per class.`);
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(blob).then(done, () => showFallback(blob));
+    else showFallback(blob);
   }
-  function showFallback(blob) {
-    const ta = $('marksout'); ta.hidden = false; ta.value = blob; ta.focus(); ta.select();
-    status('Couldn’t auto-copy — tap the box, Select All, Copy.');
+  function showFallback(blob) { const ta = $('marksout'); ta.hidden = false; ta.value = blob; ta.focus(); ta.select(); status('Couldn’t auto-copy — tap the box, Select All, Copy.'); }
+  function clearAll() {
+    if (!confirm('Clear ALL classes + attendance from this phone? Do this once the marks are in PARS.')) return;
+    classes = {}; current = null; saveOk = true;
+    try { localStorage.removeItem(LS); localStorage.removeItem(LS_CUR); } catch (_) {}
+    status(''); render();
   }
   function status(msg) { $('status').textContent = msg || ''; }
 
@@ -117,10 +136,10 @@
   $('rostercancel').addEventListener('click', () => { $('loadbox').hidden = true; $('loaderr').textContent = ''; });
   $('rosterload').addEventListener('click', () => {
     const r = loadRoster($('rosterpaste').value);
-    if (r.ok) { $('loadbox').hidden = true; $('rosterpaste').value = ''; $('loaderr').textContent = ''; }
-    else if (r.cancelled) { $('loaderr').textContent = ''; }
-    else $('loaderr').textContent = r.err || 'That doesn’t look like a PARS roster. Re-copy it on your Mac and paste again.';
+    if (r.ok) { $('loadbox').hidden = true; $('rosterpaste').value = ''; $('loaderr').textContent = ''; status(`Loaded ${r.added} class(es)${r.skipped && r.skipped.length ? ` · skipped: ${r.skipped.join('; ')}` : ''}.`); }
+    else $('loaderr').textContent = r.err || 'That doesn’t look like a PARS roster/bundle. Re-copy it on your Mac and paste again.';
   });
+  $('classsel').addEventListener('change', (e) => { current = e.target.value; save(); render(); });
   $('allpresent').addEventListener('click', allPresent);
   $('copymarks').addEventListener('click', copyMarks);
   $('clearbtn').addEventListener('click', clearAll);

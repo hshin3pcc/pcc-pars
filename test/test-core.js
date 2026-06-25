@@ -106,5 +106,18 @@ ok(core.decodeRoster('garbage') === null && core.decodeMarks('PARSROSTER1 {}') =
 ok(decoded.multiMeeting === false, 'roster blob carries the multiMeeting flag (false for a single-meeting week)');
 ok(core.buildFillPlan(roster, { '00000042': { minutes: 99999 } }).find((p) => p.iin === '00000042').minutes === 195, 'buildFillPlan clamps an over-range clipboard mark to the class length (195)');
 
+// 10) Phase-2.1 multi-class bundles round-trip (load all classes at once).
+ok(core.toRosterBlob(roster).students.length === 8 && core.toRosterBlob(roster).scheduledMinutes === 195, 'toRosterBlob flattens a parseRoster result');
+const bundleBlob = core.encodeBundle([roster, roster]);
+const rb = core.decodeBundle(bundleBlob);
+ok(/^PARSBUNDLE1 /.test(bundleBlob) && Array.isArray(rb) && rb.length === 2 && rb[0].students.length === 8 && rb[0].scheduledMinutes === 195 && rb[0].multiMeeting === false, 'encode/decodeBundle round-trips multiple roster blobs');
+ok(core.decodeBundle('garbage') === null && core.decodeBundle('PARSROSTER1 x') === null, 'decodeBundle rejects junk / wrong tag');
+const mbBlob = core.encodeMarksBundle([{ label: 'A', meetingDate: '20260608', marks: [{ iin: '111', minutes: 100 }] }, { label: 'B', meetingDate: '20260610', marks: [] }]);
+const mb = core.decodeMarksBundle(mbBlob);
+ok(/^PARSMARKSB1 /.test(mbBlob) && Array.isArray(mb) && mb.length === 2 && mb[0].label === 'A' && mb[0].marks[0].minutes === 100, 'encode/decodeMarksBundle round-trips multiple classes');
+ok(core.decodeMarksBundle('PARSMARKS1 {}') === null, 'decodeMarksBundle rejects a single-marks blob (different tag)');
+ok(core.decodeMarksBundle('PARSMARKSB1 ' + JSON.stringify({ classes: [null, { label: 'A', meetingDate: 'x', marks: [] }, { label: 'B' }] })).length === 1, 'decodeMarksBundle filters null / malformed class entries (trust boundary)');
+ok(core.decodeBundle('PARSBUNDLE1 ' + JSON.stringify({ rosters: [null, { label: 'A', students: [] }, { label: 'B' }] })).length === 1, 'decodeBundle filters null / no-students roster entries');
+
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);

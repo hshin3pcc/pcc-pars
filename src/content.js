@@ -45,8 +45,12 @@
       '<button class="ph-reload">↻ Reload roster</button>' +
       '</div>' +
       '<div class="ph-tools">' +
-      '<button class="ph-tophone">📤 Copy roster for phone</button>' +
+      '<button class="ph-addclass">➕ Add class to bundle</button>' +
+      '<button class="ph-copybundle">📤 Copy bundle (0)</button>' +
+      '</div>' +
+      '<div class="ph-tools">' +
       '<button class="ph-fromphone">📥 Paste marks from phone</button>' +
+      '<button class="ph-clearbundle">🗑 Clear bundle</button>' +
       '</div>' +
       '<div id="ph-rosterbox" style="display:none;padding:10px 12px;background:#fff;border-bottom:1px solid #e3e3e6">' +
       '<div style="font-size:12px;color:#555;margin-bottom:4px">Roster — select all & copy (⌘C), then paste on your phone:</div>' +
@@ -65,7 +69,9 @@
     panel.querySelector('.ph-close').addEventListener('click', () => panel.classList.remove('open'));
     panel.querySelector('.ph-allpresent').addEventListener('click', allPresent);
     panel.querySelector('.ph-reload').addEventListener('click', rescan);
-    panel.querySelector('.ph-tophone').addEventListener('click', copyRosterForPhone);
+    panel.querySelector('.ph-addclass').addEventListener('click', addToBundle);
+    panel.querySelector('.ph-copybundle').addEventListener('click', copyBundle);
+    panel.querySelector('.ph-clearbundle').addEventListener('click', clearBundle);
     panel.querySelector('.ph-fromphone').addEventListener('click', () => {
       const b = panel.querySelector('#ph-pastebox');
       b.style.display = b.style.display === 'none' ? 'block' : 'none';
@@ -73,37 +79,62 @@
     });
     panel.querySelector('.ph-fillpasted').addEventListener('click', fillFromPhone);
     pushBtn.addEventListener('click', push);
+    getBundle((arr) => updateBundleCount(arr.length));   // restore the count on open
   }
 
   // ---- Phase-2 handoff (Universal Clipboard / AirDrop; no cloud) ----
-  function copyRosterForPhone() {
+  // Bundle accumulator: add each class (as you click through them in PARS), then Copy the bundle once.
+  const BUNDLE_KEY = 'pars.phonebundle';
+  function getBundle(cb) { if (hasStorage) chrome.storage.local.get([BUNDLE_KEY], (r) => cb((r && r[BUNDLE_KEY]) || [])); else cb([]); }
+  function setBundle(arr, cb) { if (hasStorage) chrome.storage.local.set({ [BUNDLE_KEY]: arr }, cb || (() => {})); else if (cb) cb(); }
+  function updateBundleCount(n) { const b = panel && panel.querySelector('.ph-copybundle'); if (b) b.textContent = `📤 Copy bundle (${n})`; }
+  function addToBundle() {
     if (!roster || !roster.students.length) { status('Open a class + an open week, then ↻ Reload roster first.'); return; }
-    if (roster.meta.multiMeeting || !roster.meta.scheduledMinutes) { status('This week can’t go to the phone (multi-day or unreadable class length) — record it directly in PARS.'); return; }
-    const blob = C.encodeRoster(roster);
-    const note = 'Roster copied. On your phone: open the PARS app → ⬇︎ Load roster → Paste.';
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(blob).then(() => status(note), () => copyFallback(blob));
-    } else copyFallback(blob);
+    if (roster.meta.multiMeeting || !roster.meta.scheduledMinutes) { status('This week can’t go to the phone (multi-day / unreadable class length) — record it directly in PARS.'); return; }
+    const entry = C.toRosterBlob(roster);
+    getBundle((arr) => {
+      const k = `${entry.label}||${entry.meetingDate}`;
+      const next = arr.filter((e) => `${e.label}||${e.meetingDate}` !== k);   // replace if this class is already in
+      next.push(entry);
+      setBundle(next, () => { updateBundleCount(next.length); status(`Added “${entry.label}” — bundle has ${next.length} class(es). Switch to your next class in PARS, ↻ Reload, Add it; then Copy bundle.`); });
+    });
   }
+  function copyBundle() {
+    getBundle((arr) => {
+      if (!arr.length) { status('Bundle is empty — open each class and click “➕ Add class to bundle” first.'); return; }
+      const blob = C.encodeBundle(arr);
+      const note = `Copied ${arr.length} class(es). On your phone: PARS app → ⬇︎ Load roster → Paste (loads them all).`;
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(blob).then(() => status(note), () => copyFallback(blob));
+      else copyFallback(blob);
+    });
+  }
+  function clearBundle() { setBundle([], () => { updateBundleCount(0); status('Phone bundle cleared.'); }); }
   function copyFallback(blob) {
     const box = panel.querySelector('#ph-rosterbox'); box.style.display = 'block';
     const ta = panel.querySelector('#ph-rosterout'); ta.value = blob; ta.focus(); ta.select();
-    status('Couldn’t auto-copy — select the roster text above and copy it (⌘C), then paste on your phone.');
+    status('Couldn’t auto-copy — select the text above and copy it (⌘C), then paste on your phone.');
   }
   function fillFromPhone() {
-    const payload = C.decodeMarks(panel.querySelector('#ph-marksin').value);
-    if (!payload) { status('That doesn’t look like phone marks — re-copy on the phone and paste again.'); return; }
+    const text = panel.querySelector('#ph-marksin').value;
     const live = C.parseRoster(document);
     if (!live.students.length || live.meta.multiMeeting || !live.meta.scheduledMinutes) { status('Open the matching class + open week in PARS, then ↻ Reload roster.'); return; }
-    // Fail CLOSED: require BOTH the date AND the class label to be present and to match. Two ensembles can
-    // meet the same weekday (same date), and a student enrolled in both shares an IIN — so a date-only match
-    // could write one class's marks onto another. Refuse unless class identity is positively confirmed.
-    if (!payload.meetingDate || !live.meetingDate || live.meetingDate !== payload.meetingDate) { status(`These marks are for ${payload.meetingDate || '(unknown)'}; PARS shows ${live.meetingDate || '(unknown)'}. Pick the matching open week, then ↻ Reload.`); return; }
-    if (!payload.label || !live.meta.label || payload.label !== live.meta.label) { status('Can’t confirm these marks are for the class PARS is showing — pick the matching class, then ↻ Reload.'); return; }
+    // Accept a marks BUNDLE (many classes) or a single-class blob; pick the entry that matches the class on
+    // screen by BOTH label and date (fail closed — two same-weekday classes share a date).
+    let entry = null;
+    const bundle = C.decodeMarksBundle(text);
+    if (bundle) {
+      entry = bundle.find((e) => e && e.label && e.meetingDate && e.label === live.meta.label && e.meetingDate === live.meetingDate);
+      if (!entry) { status(`The pasted marks (${bundle.length} class(es)) don’t include “${live.meta.label}” for ${live.meetingDate}. Select that class + week in PARS, ↻ Reload.`); return; }
+    } else {
+      const single = C.decodeMarks(text);
+      if (!single) { status('That doesn’t look like phone marks — re-copy on the phone and paste again.'); return; }
+      if (!single.meetingDate || single.meetingDate !== live.meetingDate || !single.label || single.label !== live.meta.label) { status('These marks are for a different class/week than PARS is showing — pick the matching one, then ↻ Reload.'); return; }
+      entry = single;
+    }
     const marks = {};
-    (payload.marks || []).forEach((m) => { if (m && m.iin != null) marks[m.iin] = { minutes: m.minutes }; });
+    (entry.marks || []).forEach((m) => { if (m && m.iin != null) marks[m.iin] = { minutes: m.minutes }; });
     const r = C.applyFill(document, C.buildFillPlan(live, marks));
-    status(`Filled ${r.written} students from the phone${r.skipped ? ` (${r.skipped} skipped — roster changed)` : ''}. Review, then click Save/Certify in PARS.`);
+    status(`Filled ${r.written} into “${live.meta.label}”${r.skipped ? ` (${r.skipped} skipped)` : ''}. Review + Save/Certify. Select the next class in PARS and Paste again to fill it.`);
   }
 
   function open() { if (!roster) rescan(); panel.classList.add('open'); }
