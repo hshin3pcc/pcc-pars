@@ -39,16 +39,21 @@ Jot attendance on your phone during rehearsal, then push it to PARS from your Ma
 — the handoff is Apple **Universal Clipboard** (copy on one device, paste on the other), so student data
 only ever lives on your two devices. The phone app (`pwa/`) works **offline** and remembers your marks.
 
-**Weekly flow:**
-1. **Mac:** in PARS pick the class + week → helper → **📤 Copy roster for phone**.
-2. **Phone:** open the **PARS Attendance** app → **⬇︎ Load roster** → **Paste** (Universal Clipboard).
-   Mark attendance: **✓ All present**, then tap **Absent** or type minutes for the outliers. (Works with
-   no signal; it saves as you go.)
-3. **Phone:** **📋 Copy marks for PARS**.
-4. **Mac:** helper → **📥 Paste marks from phone** → paste → **Fill PARS from these phone marks** →
-   review → PARS **Save / Certify**.
+**Load rosters ONCE per term** (the app tracks the week itself):
+1. **Mac (once):** for each class, select it in PARS → helper **➕ Add class to bundle** → then **📤 Copy
+   bundle (N)**.
+2. **Phone (once):** **PARS Attendance** app → **⬇︎ Load roster** → **Paste** — all classes load together.
 
-The extension validates that the pasted marks match the class + week showing in PARS before filling.
+**Each rehearsal (no re-loading):**
+3. **Phone:** pick the class from the dropdown (it's already on the current week — auto-rolled; ◀ ▶ to
+   adjust for holidays/make-ups). **✓ All present**, then **Absent**/minutes for the outliers. Offline-OK.
+4. **Phone:** **📋 Copy marks** (covers every class at once).
+5. **Mac:** select a class in PARS → helper **📥 Paste marks** → **Fill** → **Save/Certify**. Repeat per class.
+
+The app **auto-rolls** each class to the current week on open (only when last week was already copied — a
+class with un-copied marks is left alone and flagged so you don't lose it). You only re-load a roster when
+a student **adds/drops**, and re-loading keeps your existing marks. The extension also validates the pasted
+marks match the class + week showing in PARS before filling.
 
 **Host the phone app (one time):** the PWA needs an https URL. Push this repo to GitHub → enable **Pages**
 → open `https://<you>.github.io/pcc-pars/pwa/` on your iPhone → **Share → Add to Home Screen**. The app

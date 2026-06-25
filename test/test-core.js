@@ -119,5 +119,22 @@ ok(core.decodeMarksBundle('PARSMARKS1 {}') === null, 'decodeMarksBundle rejects 
 ok(core.decodeMarksBundle('PARSMARKSB1 ' + JSON.stringify({ classes: [null, { label: 'A', meetingDate: 'x', marks: [] }, { label: 'B' }] })).length === 1, 'decodeMarksBundle filters null / malformed class entries (trust boundary)');
 ok(core.decodeBundle('PARSBUNDLE1 ' + JSON.stringify({ rosters: [null, { label: 'A', students: [] }, { label: 'B' }] })).length === 1, 'decodeBundle filters null / no-students roster entries');
 
+// 11) Phase-2.2 week-date math (load once, app rolls the week itself).
+ok(core.dayOfWeekOf('20260608') === 1, 'Jun 8 2026 is a Monday (matches the fixture meeting day)');
+ok(core.shiftWeeks('20260608', 1) === '20260615' && core.shiftWeeks('20260608', -1) === '20260601', 'shiftWeeks ±1 stays on Monday');
+ok(core.weekdayInWeekOf(1, '20260610') === '20260608', 'Monday of the week containing Wed Jun 10 is Jun 8');
+ok(core.weekdayInWeekOf(1, '20260608') === '20260608', 'Monday-of-week for a Monday is itself');
+ok(core.dayOfWeekOf(core.weekdayInWeekOf(4, '20260608')) === 4, 'weekdayInWeekOf returns the requested weekday (Thu)');
+ok(core.shiftWeeks('20251229', 1) === '20260105', 'shiftWeeks crosses a year boundary correctly');
+
+// 12) Phase-2.2 mark predicates — the data-loss safety gates (auto-roll only when there's nothing to lose).
+const studs = [{ iin: 'a' }, { iin: 'b' }, { iin: 'c' }];
+ok(core.hasNonFullMarks(studs, { a: 195, b: 195, c: 195 }, 195) === false, 'all-present -> no marks to protect (auto-roll OK)');
+ok(core.hasNonFullMarks(studs, {}, 195) === false, 'empty minutes default to full -> no marks');
+ok(core.hasNonFullMarks(studs, { a: 195, b: 0, c: 195 }, 195) === true, 'an absence (0) -> protected from auto-roll');
+ok(core.hasNonFullMarks(studs, { a: 190 }, 195) === true, 'a partial (190<195) -> protected');
+const rec = core.reconcileMinutes({ a: 0, b: 190 }, [{ iin: 'b' }, { iin: 'd' }], 195);
+ok(rec.b === 190 && rec.d === 195 && rec.a === undefined, 'reconcileMinutes: keep continuing (b=190), default new (d=195), drop departed (a) — marks survive add/drop');
+
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);

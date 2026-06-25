@@ -21,6 +21,26 @@
 
   const round1 = (n) => Math.round((Number(n) || 0) * 10) / 10;   // PARS stores tenths of an hour
 
+  // ---- week-date math (Phase 2.2: load the roster once, the app rolls the date itself each week) ----
+  function dateFromYmd(ymd) { const s = String(ymd); return new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)); }
+  function ymdFromDate(d) { return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; }
+  function dayOfWeekOf(ymd) { return dateFromYmd(ymd).getDay(); }   // 0=Sun … 6=Sat
+  /** The date (YYYYMMDD) of weekday `dow` in the Sun–Sat week containing refYmd. */
+  function weekdayInWeekOf(dow, refYmd) { const d = dateFromYmd(refYmd); d.setDate(d.getDate() - d.getDay() + Number(dow)); return ymdFromDate(d); }
+  /** Shift a meeting date by n weeks (±7·n days), preserving the weekday. */
+  function shiftWeeks(ymd, n) { const d = dateFromYmd(ymd); d.setDate(d.getDate() + 7 * Number(n)); return ymdFromDate(d); }
+  /** Any student below full attendance? (an absence/partial = captured data worth protecting from auto-roll). */
+  function hasNonFullMarks(students, minutes, full) {
+    return (students || []).some((s) => s && s.iin != null && ((minutes && minutes[s.iin] != null ? minutes[s.iin] : full) < full));
+  }
+  /** Reconcile a minutes map to a new roster (add/drop): keep a continuing student's mark, default a new
+   *  student to full, drop a departed student. Pure — used on re-load so marks survive enrollment changes. */
+  function reconcileMinutes(oldMinutes, students, full) {
+    const m = {};
+    (students || []).forEach((s) => { if (s && s.iin != null) m[s.iin] = (oldMinutes && oldMinutes[s.iin] != null) ? oldMinutes[s.iin] : full; });
+    return m;
+  }
+
   /** Minutes present -> PARS hours, using the class's own unit (scheduledMinutes / fullHours, ~50). */
   function minutesToHours(minutes, unit) {
     const u = Number(unit) > 0 ? Number(unit) : 50;
@@ -171,5 +191,5 @@
     try { const o = JSON.parse(m[1]); return (o && Array.isArray(o.marks)) ? o : null; } catch (_) { return null; }
   }
 
-  return { round1, minutesToHours, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle };
+  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle };
 });

@@ -10,6 +10,11 @@ header { background: var(--green); color: #fff; padding: 14px 16px; }
 header h1 { margin: 0; font-size: 18px; }
 header .sub { font-size: 13px; opacity: .9; margin-top: 2px; }
 header #classsel { margin-top: 8px; width: 100%; padding: 11px 10px; border-radius: 8px; border: none; font-size: 16px; background: #fff; color: #1c1c1e; }
+header #weekbar { margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+header #weekbar #weeklabel { font-size: 15px; font-weight: 600; }
+header #weekbar .wk { background: rgba(255,255,255,.18); color: #fff; border: none; border-radius: 8px; padding: 8px 18px; font-size: 16px; }
+#banner { background: #fff7e6; color: #7a5b00; border-bottom: 1px solid #f0d28a; padding: 10px 12px; font-size: 13px; }
+#tools #thisweek { flex: 0 0 auto; }
 
 #loadbar { padding: 10px 12px; }
 #loadbar .hint, .hint { font-size: 13px; color: #555; }
