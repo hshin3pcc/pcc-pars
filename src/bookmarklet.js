@@ -13,7 +13,13 @@
  */
 (function () {
   var C = window.PARSCore;
-  if (!C) { alert('PARS Fill: core failed to load — reinstall the bookmarklet from the helper page.'); return; }
+  // say(): user-visible message that works in BOTH targets — alert() for the bookmarklet, the
+  // Shortcuts result banner (completion) for the "Run JavaScript on Web Page" build.
+  function say(m) {
+    if (typeof alert === 'function') alert(m);
+    else if (typeof completion === 'function') completion(m);
+  }
+  if (!C) { say('PARS Fill: core failed to load — reinstall from the helper page.'); return; }
 
   var BOX_ID = 'pars-fill-overlay';
   function overlay(msg, withPaste) {
@@ -41,7 +47,7 @@
 
   // Guard: only ever act on the real PARS page. Anywhere else, explain and do nothing.
   if (!/(^|\.)pasadena\.edu$/i.test(location.hostname) || location.pathname.toLowerCase().indexOf('pcc_pars') < 0) {
-    alert('PARS Fill: open the PARS attendance page (csweb-pub.pasadena.edu/pcc_pars/…) first, then tap this bookmark.');
+    say('PARS Fill: open the PARS attendance page (csweb-pub.pasadena.edu/pcc_pars/…) first, then run this again.');
     return;
   }
   var live = C.parseRoster(document);
