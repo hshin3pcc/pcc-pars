@@ -48,7 +48,10 @@ only ever lives on your two devices. The phone app (`pwa/`) works **offline** an
 3. **Phone:** pick the class from the dropdown (it's already on the current week — auto-rolled; ◀ ▶ to
    adjust for holidays/make-ups). **✓ All present**, then **Absent**/minutes for the outliers. Offline-OK.
 4. **Phone:** **📋 Copy marks** (covers every class at once).
-5. **Mac:** select a class in PARS → helper **📥 Paste marks** → **Fill** → **Save/Certify**. Repeat per class.
+5. **Mac:** paste **once** into the helper (**📥 Paste marks from phone**) — it fills the class on screen
+   and stores the rest. Then per class: select it in PARS → **📥 Fill from phone marks** (one click, no
+   re-paste) → **Save/Certify**. Filled entries drop their marks (no IINs at rest); a fresh paste next
+   week replaces the stored bundle.
 
 The app **auto-rolls** each class to the current week on open — but only a week with **no absences or
 partials** (nothing that could be lost). A past week holding any absence/partial is **left alone and

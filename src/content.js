@@ -52,6 +52,9 @@
       '<button class="ph-fromphone">📥 Paste marks from phone</button>' +
       '<button class="ph-clearbundle">🗑 Clear bundle</button>' +
       '</div>' +
+      '<div class="ph-tools" id="ph-storedrow" style="display:none">' +
+      '<button class="ph-fillstored">📥 Fill from phone marks</button>' +
+      '</div>' +
       '<div id="ph-rosterbox" style="display:none;padding:10px 12px;background:#fff;border-bottom:1px solid #e3e3e6">' +
       '<div style="font-size:12px;color:#555;margin-bottom:4px">Roster — select all & copy (⌘C), then paste on your phone:</div>' +
       '<textarea id="ph-rosterout" rows="2" readonly style="width:100%;font:11px ui-monospace,monospace"></textarea>' +
@@ -78,6 +81,7 @@
       if (b.style.display === 'block') panel.querySelector('#ph-marksin').focus();
     });
     panel.querySelector('.ph-fillpasted').addEventListener('click', fillFromPhone);
+    panel.querySelector('.ph-fillstored').addEventListener('click', fillStored);
     pushBtn.addEventListener('click', push);
     getBundle((arr) => updateBundleCount(arr.length));   // restore the count on open
   }
@@ -114,27 +118,70 @@
     const ta = panel.querySelector('#ph-rosterout'); ta.value = blob; ta.focus(); ta.select();
     status('Couldn’t auto-copy — select the text above and copy it (⌘C), then paste on your phone.');
   }
+  // ---- ONE paste per week: the phone marks bundle (all classes) is kept in chrome.storage.local
+  // so every class page can fill without re-pasting. Local-only (never .sync). Each entry's marks
+  // are STRIPPED once that class is filled — same "no IINs at rest" discipline as the capture grid
+  // (the label/date/filledAt receipt stays so the button can say it's done). Stale entries are
+  // inert by construction: the fill matches on label + meeting date, fail closed. ----
+  const MARKS_KEY = 'pars.marksbundle';
+  function getMarksBundle(cb) { if (hasStorage) chrome.storage.local.get([MARKS_KEY], (r) => cb((r && r[MARKS_KEY]) || null)); else cb(null); }
+  function setMarksBundle(obj, cb) { if (hasStorage) chrome.storage.local.set({ [MARKS_KEY]: obj }, cb || (() => {})); else if (cb) cb(); }
+
+  /** Show the stored-fill button only when the stored bundle holds an UNFILLED entry for the class
+   *  on screen (other classes / stale weeks simply never match → the button stays hidden). */
+  function updateStoredButton(live) {
+    const row = panel && panel.querySelector('#ph-storedrow'); if (!row) return;
+    getMarksBundle((store) => {
+      const entry = store && live && C.matchBundleEntry(store.classes, live.meta.label, live.meetingDate);
+      if (entry && entry.marks && entry.marks.length) {
+        row.style.display = '';
+        row.querySelector('.ph-fillstored').textContent = `📥 Fill from phone marks (${fmtDate(store.savedAt)})`;
+      } else row.style.display = 'none';
+    });
+  }
+
+  /** Fill the live page from one bundle entry, strip its marks (receipt stays), persist, report. */
+  function fillEntry(entry, live, store) {
+    const marks = {};
+    (entry.marks || []).forEach((m) => { if (m && m.iin != null) marks[m.iin] = { minutes: m.minutes }; });
+    const r = C.applyFill(document, C.buildFillPlan(live, marks));
+    entry.marks = []; entry.filledAt = C.ymdFromDate(new Date());   // no IINs at rest once filled
+    setMarksBundle(store, () => updateStoredButton(live));
+    const left = (store.classes || []).filter((e) => e && e.marks && e.marks.length).length;
+    status(`Filled ${r.written} into “${live.meta.label}”${r.skipped ? ` (${r.skipped} skipped)` : ''}. Review + Save/Certify.` +
+      (left ? ` ${left} class(es) still stored — select the next class in PARS and click 📥 Fill from phone marks (no re-paste).` : ' All stored classes are filled.'));
+  }
+
   function fillFromPhone() {
     const text = panel.querySelector('#ph-marksin').value;
     const live = C.parseRoster(document);
     if (!live.students.length || live.meta.multiMeeting || !live.meta.scheduledMinutes) { status('Open the matching class + open week in PARS, then ↻ Reload roster.'); return; }
-    // Accept a marks BUNDLE (many classes) or a single-class blob; pick the entry that matches the class on
-    // screen by BOTH label and date (fail closed — two same-weekday classes share a date).
-    let entry = null;
+    // Accept a marks BUNDLE (many classes) or a single-class blob. Either way STORE it first, so
+    // this is the only paste of the week — every other class fills from storage with one click.
     const bundle = C.decodeMarksBundle(text);
-    if (bundle) {
-      entry = bundle.find((e) => e && e.label && e.meetingDate && e.label === live.meta.label && e.meetingDate === live.meetingDate);
-      if (!entry) { status(`The pasted marks (${bundle.length} class(es)) don’t include “${live.meta.label}” for ${live.meetingDate}. Select that class + week in PARS, ↻ Reload.`); return; }
-    } else {
-      const single = C.decodeMarks(text);
-      if (!single) { status('That doesn’t look like phone marks — re-copy on the phone and paste again.'); return; }
-      if (!single.meetingDate || single.meetingDate !== live.meetingDate || !single.label || single.label !== live.meta.label) { status('These marks are for a different class/week than PARS is showing — pick the matching one, then ↻ Reload.'); return; }
-      entry = single;
-    }
-    const marks = {};
-    (entry.marks || []).forEach((m) => { if (m && m.iin != null) marks[m.iin] = { minutes: m.minutes }; });
-    const r = C.applyFill(document, C.buildFillPlan(live, marks));
-    status(`Filled ${r.written} into “${live.meta.label}”${r.skipped ? ` (${r.skipped} skipped)` : ''}. Review + Save/Certify. Select the next class in PARS and Paste again to fill it.`);
+    const single = bundle ? null : C.decodeMarks(text);
+    if (!bundle && !single) { status('That doesn’t look like phone marks — re-copy on the phone and paste again.'); return; }
+    const store = { savedAt: C.ymdFromDate(new Date()), classes: bundle || [single] };
+    setMarksBundle(store, () => {
+      const entry = C.matchBundleEntry(store.classes, live.meta.label, live.meetingDate);
+      if (!entry) {
+        updateStoredButton(live);
+        status(`Stored ${store.classes.length} class(es) of phone marks — but none match “${live.meta.label}” for ${fmtDate(live.meetingDate)}. Select a matching class + week in PARS and click 📥 Fill from phone marks.`);
+        return;
+      }
+      fillEntry(entry, live, store);
+    });
+  }
+
+  function fillStored() {
+    const live = C.parseRoster(document);
+    if (!live.students.length || live.meta.multiMeeting || !live.meta.scheduledMinutes) { status('Open the matching class + open week in PARS, then ↻ Reload roster.'); return; }
+    getMarksBundle((store) => {
+      const entry = store && C.matchBundleEntry(store.classes, live.meta.label, live.meetingDate);
+      if (!entry) { updateStoredButton(live); status('No stored phone marks match this class/week — use 📥 Paste marks from phone.'); return; }
+      if (!entry.marks || !entry.marks.length) { status(`“${live.meta.label}” was already filled from these phone marks${entry.filledAt ? ` (${fmtDate(entry.filledAt)})` : ''} — re-copy on the phone and paste to fill again.`); return; }
+      fillEntry(entry, live, store);
+    });
   }
 
   function open() { if (!roster) rescan(); panel.classList.add('open'); }
@@ -185,6 +232,7 @@
     listEl.innerHTML = '';
     roster.students.forEach((s) => listEl.appendChild(card(s)));
     pushBtn.textContent = `Fill PARS (${roster.students.length})`;
+    updateStoredButton(roster);   // offer the one-click stored fill when this class's marks are waiting
     status('');
   }
 

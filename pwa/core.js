@@ -211,6 +211,13 @@
     if (!m) return null;
     try { const o = JSON.parse(m[1]); return (o && Array.isArray(o.marks)) ? o : null; } catch (_) { return null; }
   }
+  /** Pick the marks-bundle entry matching the class ON SCREEN — by BOTH label and meeting date,
+   *  fail closed (two same-weekday classes share a date, and label alone could span weeks). Used by
+   *  the extension's stored-bundle fill and the phone bookmarklet. Returns the entry or null. */
+  function matchBundleEntry(entries, label, meetingDate) {
+    if (!Array.isArray(entries) || !label || !meetingDate) return null;
+    return entries.find((e) => e && e.label === label && e.meetingDate === meetingDate) || null;
+  }
 
-  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, planAutoRoll, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle };
+  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, planAutoRoll, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle, matchBundleEntry };
 });

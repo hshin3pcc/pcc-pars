@@ -150,6 +150,14 @@ const plan4 = core.planAutoRoll({ a: mkEntry('20260601', {}), b: mkEntry('202606
 ok(plan4.rolled.length === 1 && plan4.rolled[0].key === 'a' && plan4.stuck.length === 1 && plan4.stuck[0].key === 'b', 'multi-class: each class decided independently');
 ok(core.planAutoRoll({ bad: { weekDate: '20260601' } }, '20260610').rolled.length === 0 && core.planAutoRoll(null, '20260610').stuck.length === 0, 'malformed/missing entries are skipped, never crash');
 
+// 13b) matchBundleEntry — the fail-closed selection used by the stored-bundle fill + the bookmarklet.
+const mbe = [{ label: 'Orch', meetingDate: '20260901', marks: [] }, { label: 'Applied', meetingDate: '20260901', marks: [] }];
+ok(core.matchBundleEntry(mbe, 'Applied', '20260901') === mbe[1], 'matches by label AND date');
+ok(core.matchBundleEntry(mbe, 'Orch', '20260908') === null, 'same label, different week → null (fail closed)');
+ok(core.matchBundleEntry(mbe, 'Band', '20260901') === null, 'unknown label → null');
+ok(core.matchBundleEntry(null, 'Orch', '20260901') === null && core.matchBundleEntry(mbe, '', '20260901') === null && core.matchBundleEntry(mbe, 'Orch', '') === null, 'null/blank inputs → null, never throw');
+ok(core.matchBundleEntry([null, { label: 'Orch' }, mbe[0]], 'Orch', '20260901') === mbe[0], 'skips null/malformed entries');
+
 // 14) The tested file must BE the shipped file: pwa/core.js is a hand-synced copy of src/core.js
 // (`npm run build-pwa`). If they diverge, this suite stays green while the phone runs old logic —
 // unacceptable for the auto-roll safety code — so divergence is a test failure.

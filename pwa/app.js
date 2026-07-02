@@ -152,7 +152,7 @@
       return { label: c.roster.label, meetingDate: c.weekDate, marks: c.roster.students.map((s) => ({ iin: s.iin, minutes: c.minutes[s.iin] != null ? c.minutes[s.iin] : fullMin(c) })) };
     });
     const blob = C.encodeMarksBundle(entries);
-    const done = () => status(`Copied ${entries.length} class(es). On your Mac: select a class in PARS → helper 📥 Paste marks → Fill. Repeat per class. (Marks stay here until you roll the week forward.)`);
+    const done = () => status(`Copied ${entries.length} class(es). On your Mac: paste ONCE into the helper (📥 Paste marks from phone) — then for each class just select it in PARS and click 📥 Fill from phone marks. (Marks stay here until you roll the week forward.)`);
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(blob).then(done, () => showFallback(blob));
     else showFallback(blob);
   }
