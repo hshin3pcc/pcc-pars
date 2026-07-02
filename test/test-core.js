@@ -136,5 +136,25 @@ ok(core.hasNonFullMarks(studs, { a: 190 }, 195) === true, 'a partial (190<195) -
 const rec = core.reconcileMinutes({ a: 0, b: 190 }, [{ iin: 'b' }, { iin: 'd' }], 195);
 ok(rec.b === 190 && rec.d === 195 && rec.a === undefined, 'reconcileMinutes: keep continuing (b=190), default new (d=195), drop departed (a) — marks survive add/drop');
 
+// 13) planAutoRoll — the on-open roll DECISION, and the "never silent" guarantee: every auto-advanced
+// week is NAMED (rolled[]), so an unfiled all-present week can't vanish without a trace.
+const mkEntry = (weekDate, minutes) => ({ weekDate, minutes, roster: { label: 'Orch', dayOfWeek: 1, scheduledMinutes: 195, students: studs } });
+// today = Wed Jun 10 2026; the class meets Mondays → current week = 20260608.
+const plan1 = core.planAutoRoll({ orch: mkEntry('20260601', {}) }, '20260610');
+ok(plan1.rolled.length === 1 && plan1.rolled[0].fromDate === '20260601' && plan1.rolled[0].label === 'Orch' && plan1.stuck.length === 0, 'stale all-present week rolls AND is named with its date');
+const plan2 = core.planAutoRoll({ orch: mkEntry('20260601', { a: 0 }) }, '20260610');
+ok(plan2.stuck.length === 1 && plan2.rolled.length === 0, 'stale week with an absence is stuck (kept + flagged), never rolled');
+const plan3 = core.planAutoRoll({ orch: mkEntry('20260608', { a: 0 }) }, '20260610');
+ok(plan3.rolled.length === 0 && plan3.stuck.length === 0, 'the CURRENT week is left alone, marks and all');
+const plan4 = core.planAutoRoll({ a: mkEntry('20260601', {}), b: mkEntry('20260601', { b: 190 }) }, '20260610');
+ok(plan4.rolled.length === 1 && plan4.rolled[0].key === 'a' && plan4.stuck.length === 1 && plan4.stuck[0].key === 'b', 'multi-class: each class decided independently');
+ok(core.planAutoRoll({ bad: { weekDate: '20260601' } }, '20260610').rolled.length === 0 && core.planAutoRoll(null, '20260610').stuck.length === 0, 'malformed/missing entries are skipped, never crash');
+
+// 14) The tested file must BE the shipped file: pwa/core.js is a hand-synced copy of src/core.js
+// (`npm run build-pwa`). If they diverge, this suite stays green while the phone runs old logic —
+// unacceptable for the auto-roll safety code — so divergence is a test failure.
+ok(fs.readFileSync(path.join(__dirname, '..', 'src', 'core.js'), 'utf8') === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'core.js'), 'utf8'),
+  'pwa/core.js is byte-identical to src/core.js (run `npm run build-pwa` after editing core)');
+
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);

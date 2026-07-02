@@ -33,6 +33,27 @@
   function hasNonFullMarks(students, minutes, full) {
     return (students || []).some((s) => s && s.iin != null && ((minutes && minutes[s.iin] != null ? minutes[s.iin] : full) < full));
   }
+  /** Phase-2.2 on-open auto-roll PLAN (pure; the PWA applies it). For each class entry
+   *  { weekDate, minutes, roster:{label, dayOfWeek, scheduledMinutes, students} } whose stored week is
+   *  BEFORE the current week: it may roll only when it holds NO absence/partial (nothing to lose) — and
+   *  even then it is NAMED in `rolled`, because the app cannot know whether that all-present week was
+   *  ever actually FILED in PARS. The banner is the guardrail against silently losing an unfiled week.
+   *  A stale week holding marks goes to `stuck` (kept + flagged, never rolled).
+   *  Returns { rolled:[{key,label,fromDate}], stuck:[{key,label,weekDate}] }. */
+  function planAutoRoll(entries, todayYmd) {
+    const rolled = [], stuck = [];
+    Object.keys(entries || {}).forEach((k) => {
+      const e = entries[k];
+      if (!e || !e.roster || e.roster.dayOfWeek == null || !e.weekDate) return;   // malformed → skip, never crash
+      const full = e.roster.scheduledMinutes || 195;
+      const curWeek = weekdayInWeekOf(e.roster.dayOfWeek, todayYmd);
+      if (!(e.weekDate < curWeek)) return;                                        // current/future week: left alone
+      if (hasNonFullMarks(e.roster.students, e.minutes, full)) stuck.push({ key: k, label: e.roster.label, weekDate: e.weekDate });
+      else rolled.push({ key: k, label: e.roster.label, fromDate: e.weekDate });
+    });
+    return { rolled, stuck };
+  }
+
   /** Reconcile a minutes map to a new roster (add/drop): keep a continuing student's mark, default a new
    *  student to full, drop a departed student. Pure — used on re-load so marks survive enrollment changes. */
   function reconcileMinutes(oldMinutes, students, full) {
@@ -191,5 +212,5 @@
     try { const o = JSON.parse(m[1]); return (o && Array.isArray(o.marks)) ? o : null; } catch (_) { return null; }
   }
 
-  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle };
+  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, planAutoRoll, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle };
 });

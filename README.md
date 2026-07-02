@@ -50,8 +50,11 @@ only ever lives on your two devices. The phone app (`pwa/`) works **offline** an
 4. **Phone:** **📋 Copy marks** (covers every class at once).
 5. **Mac:** select a class in PARS → helper **📥 Paste marks** → **Fill** → **Save/Certify**. Repeat per class.
 
-The app **auto-rolls** each class to the current week on open (only when last week was already copied — a
-class with un-copied marks is left alone and flagged so you don't lose it). You only re-load a roster when
+The app **auto-rolls** each class to the current week on open — but only a week with **no absences or
+partials** (nothing that could be lost). A past week holding any absence/partial is **left alone and
+flagged** in the banner. When an all-present week *is* auto-advanced, the banner **names it (with its
+date)**: the app can't know whether you actually filed that week in PARS, so if you didn't, tap ◀ to go
+back and file it before moving on. You only re-load a roster when
 a student **adds/drops**, and re-loading keeps your existing marks. The extension also validates the pasted
 marks match the class + week showing in PARS before filling.
 

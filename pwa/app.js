@@ -5,9 +5,11 @@
  * Classes are keyed by class (the roster is stable all term); each carries the week it's recording for.
  *
  * NEVER silently loses attendance: a past week is auto-rolled to the current week ONLY if it has no marks
- * (nothing to lose). A past week that has any absence/partial is LEFT ALONE and flagged in the banner —
- * you file it in PARS or explicitly roll forward (with a confirm). Step weeks with ◀ ▶; "📅 This week"
- * rolls past weeks forward. Re-load only when a student adds/drops — re-loading keeps your marks.
+ * (nothing to lose) — and every auto-rolled week is NAMED in the banner (the app can't know whether an
+ * all-present week was actually FILED in PARS, so the banner is the guardrail). A past week that has any
+ * absence/partial is LEFT ALONE and flagged — you file it in PARS or explicitly roll forward (with a
+ * confirm). Step weeks with ◀ ▶; "📅 This week" rolls past weeks forward. Re-load only when a student
+ * adds/drops — re-loading keeps your marks.
  * Fully offline + local; Copy marks hands everything back via Universal Clipboard. Nothing leaves the device.
  */
 (function () {
@@ -45,17 +47,17 @@
   function freshMinutes(e) { const m = {}; e.roster.students.forEach((s) => { m[s.iin] = fullMin(e); }); return m; }
   function roll(e) { e.weekDate = thisWeekDate(e); e.minutes = freshMinutes(e); }
 
-  /** On open: auto-roll a past week ONLY when it has no marks (nothing to lose). Leave a past week that
-   *  holds absences/partials and flag it — never silently discard captured attendance. */
+  /** On open: auto-roll a past week ONLY when it has no marks (nothing to lose) — and NAME every
+   *  auto-rolled week in the banner, since the app can't know whether that all-present week was ever
+   *  filed in PARS. A past week holding absences/partials is left alone and flagged — never silently
+   *  discard (or silently advance past) captured attendance. Decision logic: core.planAutoRoll (tested). */
   function autoRollOnOpen() {
-    const stuck = [];
-    Object.keys(classes).forEach((k) => {
-      const e = classes[k];
-      if (!isStale(e)) return;
-      if (!hasMarks(e)) roll(e);
-      else stuck.push(e.roster.label);
-    });
-    bannerMsg = stuck.length ? `Un-filed attendance from a past week: ${stuck.join(', ')}. File it in PARS, or tap 📅 This week to start fresh.` : '';
+    const plan = C.planAutoRoll(classes, todayYmd());
+    plan.rolled.forEach((r) => roll(classes[r.key]));
+    const parts = [];
+    if (plan.stuck.length) parts.push(`Un-filed attendance from a past week: ${plan.stuck.map((s) => s.label).join(', ')}. File it in PARS, or tap 📅 This week to start fresh.`);
+    if (plan.rolled.length) parts.push(`Auto-advanced to this week: ${plan.rolled.map((r) => `${r.label} (was ${fmtDate(r.fromDate)})`).join(', ')} — those weeks were all-present; if one was never filed in PARS, tap ◀ to go back and file it.`);
+    bannerMsg = parts.join('  ');
     save();
   }
 
