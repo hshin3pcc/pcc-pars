@@ -53,6 +53,14 @@ only ever lives on your two devices. The phone app (`pwa/`) works **offline** an
    re-paste) → **Save/Certify**. Filled entries drop their marks (no IINs at rest); a fresh paste next
    week replaces the stored bundle.
 
+**Phone-only alternative (no Mac needed): the PARS Fill bookmarklet.** iOS Safari logs into PARS like
+any browser, so the whole weekly loop can run on the phone: PARS app → **📋 Copy marks** → open PARS in
+Safari (class + open week) → tap the **PARS Fill** bookmark → allow the paste → review → **Save/Certify**.
+Install it once from `https://<you>.github.io/pcc-pars/pwa/fill.html`; it's built by
+`npm run build-bookmarklet` from the SAME tested core as the extension (fail-closed label+date matching,
+single-meeting-week guard, never touches Save/Certify) and a test pins the committed page to the source.
+The Mac extension remains the desktop path.
+
 The app **auto-rolls** each class to the current week on open — but only a week with **no absences or
 partials** (nothing that could be lost). A past week holding any absence/partial is **left alone and
 flagged** in the banner. When an all-present week *is* auto-advanced, the banner **names it (with its

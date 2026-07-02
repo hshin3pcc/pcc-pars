@@ -164,5 +164,13 @@ ok(core.matchBundleEntry([null, { label: 'Orch' }, mbe[0]], 'Orch', '20260901') 
 ok(fs.readFileSync(path.join(__dirname, '..', 'src', 'core.js'), 'utf8') === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'core.js'), 'utf8'),
   'pwa/core.js is byte-identical to src/core.js (run `npm run build-pwa` after editing core)');
 
+// 15) Bookmarklet build: parses (build() has a `new Function` syntax gate), stays comfortably inside
+// Safari's bookmark-URL limits, and the COMMITTED install page is CURRENT — same twin-file discipline
+// as pwa/core.js (the shipped artifact must be built from the tested source).
+const bk = require('../scripts/build-bookmarklet').build();
+ok(bk.url.indexOf('javascript:') === 0 && bk.bytes < 60000, `bookmarklet builds + parses (${bk.bytes} bytes, under the Safari limit)`);
+ok(bk.html === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'fill.html'), 'utf8'),
+  'pwa/fill.html is current (run `npm run build-bookmarklet` after editing core/bookmarklet)');
+
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);
