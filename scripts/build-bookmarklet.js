@@ -24,9 +24,13 @@ function build() {
   new Function(src); // parse gate — refuse to emit a bookmarklet that won't run
   const url = 'javascript:' + encodeURIComponent(src);
   // Shortcuts variant — same composed code for the Apple Shortcuts "Run JavaScript on Web Page"
-  // action (iOS increasingly blocks/neuters javascript: bookmarks; the Shortcut is the sanctioned
-  // path). The action REQUIRES completion() to be called; the tail no-ops in a plain bookmarklet.
-  const shortcutSrc = src + '\nif (typeof completion === "function") completion();\n';
+  // action (iOS blocks/neuters javascript: bookmarks; the Shortcut is the sanctioned path). The
+  // action REQUIRES completion() to be called. Shipped as a ONE-LINE eval(decodeURIComponent(…))
+  // payload: raw multi-line source did not survive transfer (Notes collapses newlines → the first
+  // // comment swallowed the rest → "Unexpected end of script"), while a URL-encoded single line
+  // has no newlines to collapse and no bare quotes to smart-curl. Double quotes wrap the payload
+  // because encodeURIComponent never emits `"` (it DOES pass `'` through).
+  const shortcutSrc = 'eval(decodeURIComponent("' + encodeURIComponent(src) + '")); if (typeof completion === "function") completion();';
   new Function('completion', shortcutSrc); // parse gate for the Shortcuts build too
 
   const html = `<!doctype html>

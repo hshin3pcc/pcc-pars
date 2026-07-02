@@ -173,6 +173,8 @@ ok(bk.html === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'fill.html'), '
   'pwa/fill.html is current (run `npm run build-bookmarklet` after editing core/bookmarklet)');
 ok(/completion\(\)/.test(bk.shortcutSrc) && bk.shortcutSrc.indexOf('javascript:') !== 0,
   'Shortcuts variant calls completion() and is raw source (not a javascript: URL)');
+ok(bk.shortcutSrc.indexOf('\n') < 0 && bk.shortcutSrc.indexOf('"') >= 0 && !/[^\x20-\x7e]/.test(bk.shortcutSrc),
+  'Shortcuts payload is ONE line of plain ASCII (survives Notes/paste transfer unmangled)');
 
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);
