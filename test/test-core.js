@@ -173,8 +173,8 @@ ok(bk.html === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'fill.html'), '
   'pwa/fill.html is current (run `npm run build-bookmarklet` after editing core/bookmarklet)');
 ok(bk.shortcutSrc.length < 500 && bk.shortcutSrc.indexOf('\n') < 0 && !/[^\x20-\x7e]/.test(bk.shortcutSrc),
   `Shortcuts stub is tiny one-line ASCII (${bk.shortcutSrc.length} chars — immune to paste truncation)`);
-ok(bk.shortcutSrc.indexOf('hshin3pcc.github.io/pcc-pars/pwa/fill.js') >= 0 && /completion/.test(bk.shortcutSrc),
-  'stub fetches the served fill.js and completes on failure (never hangs the Shortcut)');
+ok(bk.shortcutSrc.indexOf('raw.githubusercontent.com/hshin3pcc/pcc-pars/main/pwa/fill.js') >= 0 && /completion/.test(bk.shortcutSrc),
+  'stub fetches fill.js from raw (push-instant, no deploy pipeline) and completes on failure');
 ok(bk.fillJs === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'fill.js'), 'utf8'),
   'pwa/fill.js is current (run `npm run build-bookmarklet` after editing core/bookmarklet)');
 // The Shortcuts action WAITS for completion(): it must fire only at terminal points (finish()),

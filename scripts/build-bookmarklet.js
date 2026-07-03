@@ -37,10 +37,14 @@ function build() {
   // checkmark, no overlay — the action's contract is "wait until completion() is called").
   const fillJs = src + '\n';
   new Function('completion', fillJs); // parse gate for the served file
-  const FILL_URL = 'https://hshin3pcc.github.io/pcc-pars/pwa/fill.js';
-  // "?v="+Date.now(): a UNIQUE query per run gives the CDN edge a cache-miss every time, so the
-  // phone always executes the freshly deployed code. (cache:"no-store" only bypasses the BROWSER
-  // cache — live debugging showed the Fastly edge kept serving a stale fill.js for its max-age.)
+  // raw.githubusercontent (NOT the Pages URL): raw serves the pushed commit INSTANTLY with
+  // ACAO:* — no deploy pipeline at all. The Pages URL sat behind "pages build and deployment",
+  // whose deploy service spent an entire evening rejecting artifacts ("Deployment failed, try
+  // again later") while raw served the same bytes the moment they were pushed.
+  const FILL_URL = 'https://raw.githubusercontent.com/hshin3pcc/pcc-pars/main/pwa/fill.js';
+  // "?v="+Date.now(): a UNIQUE query per run gives the CDN a cache-miss every time, so the
+  // phone always executes the freshly pushed code. (cache:"no-store" only bypasses the BROWSER
+  // cache — live debugging showed the edge kept serving a stale fill.js for its max-age.)
   const shortcutSrc = 'fetch("' + FILL_URL + '?v="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(function(s){eval(s)}).catch(function(e){if(typeof completion==="function")completion("PARS Fill: could not load the code ("+e+") - check the connection and try again")});';
   new Function('completion', shortcutSrc); // parse gate for the stub too
 
