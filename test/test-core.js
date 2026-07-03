@@ -181,6 +181,8 @@ ok(bk.fillJs === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'fill.js'), '
 // never as an unconditional tail — that ended the shortcut before the async clipboard path ran.
 ok(/function finish\(/.test(bk.fillJs) && !/\n?if \(typeof completion === "function"\) completion\(\);\n$/.test(bk.fillJs),
   'completion() routes through finish() at terminal points, not an unconditional tail');
+ok(/completion\(msg/.test(bk.fillJs),
+  'finish() passes the message to completion() (shows in a Show Alert/Result action — belt for the overlay)');
 
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);

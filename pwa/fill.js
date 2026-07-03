@@ -246,7 +246,10 @@
   var IN_SHORTCUT = (typeof completion === 'function');
   function finish(msg) {
     if (msg) overlay(msg);
-    if (IN_SHORTCUT) { try { completion(); } catch (_) {} }
+    // Pass the message THROUGH completion too: with a "Show Alert"/"Show Result" action after the
+    // JS action, the result shows in Apple's own UI — belt for the overlay, which renders small on
+    // PARS's non-responsive (zoomed-out) layout and could in principle be missed.
+    if (IN_SHORTCUT) { try { completion(msg || 'PARS Fill: done.'); } catch (_) {} }
   }
   function say(m) {
     if (IN_SHORTCUT) finish(m);
@@ -259,20 +262,22 @@
     var old = document.getElementById(BOX_ID); if (old) old.remove();
     var box = document.createElement('div');
     box.id = BOX_ID;
-    box.style.cssText = 'position:fixed;top:8px;left:8px;right:8px;z-index:2147483647;background:#1c1c1e;color:#fff;padding:14px;border-radius:12px;font:15px -apple-system,sans-serif;box-shadow:0 4px 24px rgba(0,0,0,.4)';
+    // Sized for PARS's NON-responsive layout: iOS renders the page at ~980px virtual width and
+    // scales it down, so normal-sized text becomes microscopic. 34px here ≈ comfortably readable.
+    box.style.cssText = 'position:fixed;top:12px;left:12px;right:12px;z-index:2147483647;background:#1c1c1e;color:#fff;padding:24px;border-radius:18px;font:34px -apple-system,sans-serif;box-shadow:0 6px 32px rgba(0,0,0,.45)';
     var p = document.createElement('div'); p.textContent = msg; box.appendChild(p);
     if (withPaste) {
       var ta = document.createElement('textarea');
       ta.rows = 3; ta.placeholder = 'Paste the marks here…';
-      ta.style.cssText = 'width:100%;margin-top:10px;font:13px ui-monospace,monospace;color:#000';
+      ta.style.cssText = 'width:100%;margin-top:16px;font:26px ui-monospace,monospace;color:#000';
       box.appendChild(ta);
       var go = document.createElement('button'); go.textContent = 'Fill from pasted marks';
-      go.style.cssText = 'margin-top:8px;width:100%;padding:10px;border-radius:8px;border:0;background:#0a84ff;color:#fff;font-size:15px';
+      go.style.cssText = 'margin-top:14px;width:100%;padding:18px;border-radius:14px;border:0;background:#0a84ff;color:#fff;font-size:32px';
       go.addEventListener('click', function () { fillFrom(ta.value); });
       box.appendChild(go);
     }
     var x = document.createElement('button'); x.textContent = 'Close';
-    x.style.cssText = 'margin-top:8px;width:100%;padding:8px;border-radius:8px;border:0;background:#3a3a3c;color:#fff';
+    x.style.cssText = 'margin-top:14px;width:100%;padding:16px;border-radius:14px;border:0;background:#3a3a3c;color:#fff;font-size:32px';
     // Attribute handler on purpose: it runs in the PAGE world, so Close keeps working even after
     // the Shortcuts script context is torn down post-completion().
     x.setAttribute('onclick', 'document.getElementById("' + BOX_ID + '").remove()');
