@@ -245,10 +245,14 @@
   // (live-observed: checkmark, no overlay). finish() is that single terminal chokepoint.
   var IN_SHORTCUT = (typeof completion === 'function');
   function finish(msg) {
-    if (msg) overlay(msg);
-    // Pass the message THROUGH completion too: with a "Show Alert"/"Show Result" action after the
-    // JS action, the result shows in Apple's own UI — belt for the overlay, which renders small on
-    // PARS's non-responsive (zoomed-out) layout and could in principle be missed.
+    // THREE channels, because live debugging showed feedback can silently vanish: (1) the in-page
+    // overlay; (2) the page's own alert() — WKWebView renders JS dialogs even for injected code;
+    // (3) completion(msg), which a "Show Alert"/"Show Result" action after the JS action displays
+    // in Apple's own UI. At least one must land.
+    if (msg) {
+      overlay(msg);
+      if (IN_SHORTCUT) { try { window.alert(msg); } catch (_) {} }
+    }
     if (IN_SHORTCUT) { try { completion(msg || 'PARS Fill: done.'); } catch (_) {} }
   }
   function say(m) {
@@ -291,7 +295,14 @@
     return;
   }
   var live = C.parseRoster(document);
-  if (!live.students.length) { finish('No editable roster on this page — pick a class and an OPEN (uncertified) week in PARS, then run PARS Fill again.'); return; }
+  if (!live.students.length) {
+    // Diagnostics ride the message: which document we actually ran in, and whether the roster
+    // table exists at all (rows>0 with no editable cells = a certified/closed week; rows=0 = the
+    // wrong document — e.g. a frameset parent — or not a roster page).
+    var rows = document.querySelectorAll('tr[id^="sturow"]').length;
+    finish('No editable roster on this page — pick a class and an OPEN (uncertified) week in PARS, then run PARS Fill again. [saw ' + rows + ' roster row(s) on ' + location.pathname + ']');
+    return;
+  }
   if (live.meta.multiMeeting) { finish('This class meets more than one day this week — the helper fills single-meeting weeks only. Enter this one directly in PARS.'); return; }
   if (!live.meta.scheduledMinutes) { finish('Couldn’t read the class length from PARS, so no hours will be guessed — enter this week directly in PARS.'); return; }
 
