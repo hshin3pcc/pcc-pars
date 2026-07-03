@@ -175,8 +175,12 @@ ok(bk.shortcutSrc.length < 500 && bk.shortcutSrc.indexOf('\n') < 0 && !/[^\x20-\
   `Shortcuts stub is tiny one-line ASCII (${bk.shortcutSrc.length} chars — immune to paste truncation)`);
 ok(bk.shortcutSrc.indexOf('hshin3pcc.github.io/pcc-pars/pwa/fill.js') >= 0 && /completion/.test(bk.shortcutSrc),
   'stub fetches the served fill.js and completes on failure (never hangs the Shortcut)');
-ok(/completion\(\)/.test(bk.fillJs) && bk.fillJs === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'fill.js'), 'utf8'),
-  'pwa/fill.js is current + calls completion() (run `npm run build-bookmarklet` after editing core/bookmarklet)');
+ok(bk.fillJs === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'fill.js'), 'utf8'),
+  'pwa/fill.js is current (run `npm run build-bookmarklet` after editing core/bookmarklet)');
+// The Shortcuts action WAITS for completion(): it must fire only at terminal points (finish()),
+// never as an unconditional tail — that ended the shortcut before the async clipboard path ran.
+ok(/function finish\(/.test(bk.fillJs) && !/\n?if \(typeof completion === "function"\) completion\(\);\n$/.test(bk.fillJs),
+  'completion() routes through finish() at terminal points, not an unconditional tail');
 
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);

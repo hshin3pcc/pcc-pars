@@ -32,7 +32,10 @@ function build() {
   // PARS page) and evals it. cache:"no-store" keeps it current — a `git push` updates every
   // installed Shortcut with no re-paste. The fetched fill.js calls completion() itself; the stub's
   // catch completes with the error so the Shortcut never hangs.
-  const fillJs = src + '\nif (typeof completion === "function") completion();\n';
+  // No completion() tail here: the wrapper's finish() calls completion() at TERMINAL points only.
+  // An unconditional tail ended the Shortcut before the async clipboard path ran (live-observed:
+  // checkmark, no overlay — the action's contract is "wait until completion() is called").
+  const fillJs = src + '\n';
   new Function('completion', fillJs); // parse gate for the served file
   const FILL_URL = 'https://hshin3pcc.github.io/pcc-pars/pwa/fill.js';
   const shortcutSrc = 'fetch("' + FILL_URL + '",{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(function(s){eval(s)}).catch(function(e){if(typeof completion==="function")completion("PARS Fill: could not load the code ("+e+") - check the connection and try again")});';

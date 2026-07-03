@@ -238,11 +238,19 @@
  */
 (function () {
   var C = window.PARSCore;
-  // say(): user-visible message that works in BOTH targets — alert() for the bookmarklet, the
-  // Shortcuts result banner (completion) for the "Run JavaScript on Web Page" build.
+  // Two targets, one wrapper. IN_SHORTCUT = running inside Apple Shortcuts' "Run JavaScript on
+  // Web Page" action, whose contract is: the action WAITS until completion() is called. So
+  // completion() must fire only at TERMINAL points (after the overlay is painted / the fill is
+  // done) — an early unconditional call ends the shortcut before the async clipboard path runs
+  // (live-observed: checkmark, no overlay). finish() is that single terminal chokepoint.
+  var IN_SHORTCUT = (typeof completion === 'function');
+  function finish(msg) {
+    if (msg) overlay(msg);
+    if (IN_SHORTCUT) { try { completion(); } catch (_) {} }
+  }
   function say(m) {
-    if (typeof alert === 'function') alert(m);
-    else if (typeof completion === 'function') completion(m);
+    if (IN_SHORTCUT) finish(m);
+    else if (typeof alert === 'function') alert(m);
   }
   if (!C) { say('PARS Fill: core failed to load — reinstall from the helper page.'); return; }
 
@@ -265,9 +273,11 @@
     }
     var x = document.createElement('button'); x.textContent = 'Close';
     x.style.cssText = 'margin-top:8px;width:100%;padding:8px;border-radius:8px;border:0;background:#3a3a3c;color:#fff';
-    x.addEventListener('click', function () { box.remove(); });
+    // Attribute handler on purpose: it runs in the PAGE world, so Close keeps working even after
+    // the Shortcuts script context is torn down post-completion().
+    x.setAttribute('onclick', 'document.getElementById("' + BOX_ID + '").remove()');
     box.appendChild(x);
-    document.body.appendChild(box);
+    (document.body || document.documentElement).appendChild(box);
   }
 
   // Guard: only ever act on the real PARS page. Anywhere else, explain and do nothing.
@@ -276,30 +286,40 @@
     return;
   }
   var live = C.parseRoster(document);
-  if (!live.students.length) { overlay('No editable roster on this page — pick a class and an OPEN (uncertified) week in PARS, then tap the bookmark again.'); return; }
-  if (live.meta.multiMeeting) { overlay('This class meets more than one day this week — the helper fills single-meeting weeks only. Enter this one directly in PARS.'); return; }
-  if (!live.meta.scheduledMinutes) { overlay('Couldn’t read the class length from PARS, so no hours will be guessed — enter this week directly in PARS.'); return; }
+  if (!live.students.length) { finish('No editable roster on this page — pick a class and an OPEN (uncertified) week in PARS, then run PARS Fill again.'); return; }
+  if (live.meta.multiMeeting) { finish('This class meets more than one day this week — the helper fills single-meeting weeks only. Enter this one directly in PARS.'); return; }
+  if (!live.meta.scheduledMinutes) { finish('Couldn’t read the class length from PARS, so no hours will be guessed — enter this week directly in PARS.'); return; }
 
   function fillFrom(text) {
     var single;
     var bundle = C.decodeMarksBundle(text) || ((single = C.decodeMarks(text)) ? [single] : null);
-    if (!bundle) { overlay('That isn’t phone marks — in the PARS Attendance app tap 📋 Copy marks, then tap this bookmark again.', true); return; }
+    // Interactive paste-box retries only make sense in the bookmarklet (page world). In the
+    // Shortcut, the cure is always the same: copy the marks, run PARS Fill again — say so + end.
+    if (!bundle) {
+      if (IN_SHORTCUT) { finish('The clipboard isn’t phone marks — in the PARS Attendance app tap 📋 Copy marks, then run PARS Fill again.'); return; }
+      overlay('That isn’t phone marks — in the PARS Attendance app tap 📋 Copy marks, then tap this bookmark again.', true); return;
+    }
     var entry = C.matchBundleEntry(bundle, live.meta.label, live.meetingDate);
-    if (!entry) { overlay('The copied marks (' + bundle.length + ' class(es)) don’t include “' + live.meta.label + '” for this week — check the class + week PARS is showing.', true); return; }
+    if (!entry) {
+      if (IN_SHORTCUT) { finish('The copied marks (' + bundle.length + ' class(es)) don’t include “' + live.meta.label + '” for this week — check the class + week PARS is showing, re-copy, and run again.'); return; }
+      overlay('The copied marks (' + bundle.length + ' class(es)) don’t include “' + live.meta.label + '” for this week — check the class + week PARS is showing.', true); return;
+    }
     var marks = {};
     (entry.marks || []).forEach(function (m) { if (m && m.iin != null) marks[m.iin] = { minutes: m.minutes }; });
     var r = C.applyFill(document, C.buildFillPlan(live, marks));
-    overlay('Filled ' + r.written + ' student(s) into “' + live.meta.label + '”' + (r.skipped ? ' (' + r.skipped + ' skipped — roster changed?)' : '') + '. REVIEW the values, then tap PARS’s own Save / Certify. Nothing was submitted automatically.');
+    finish('Filled ' + r.written + ' student(s) into “' + live.meta.label + '”' + (r.skipped ? ' (' + r.skipped + ' skipped — roster changed?)' : '') + '. REVIEW the values, then tap PARS’s own Save / Certify. Nothing was submitted automatically.');
   }
 
   if (navigator.clipboard && navigator.clipboard.readText) {
     navigator.clipboard.readText().then(fillFrom, function () {
+      if (IN_SHORTCUT) { finish('Couldn’t read the clipboard — in the PARS Attendance app tap 📋 Copy marks, then run PARS Fill again right away.'); return; }
       overlay('Couldn’t read the clipboard (permission declined?) — paste the marks manually:', true);
     });
+  } else if (IN_SHORTCUT) {
+    finish('This browser blocks clipboard reads — copy the marks and use the desktop extension instead.');
   } else {
     overlay('Paste the marks from the PARS Attendance app:', true);
   }
 })();
 
 })();
-if (typeof completion === "function") completion();
