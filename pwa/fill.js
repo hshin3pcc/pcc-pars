@@ -326,16 +326,31 @@
     finish('Filled ' + r.written + ' student(s) into “' + live.meta.label + '”' + (r.skipped ? ' (' + r.skipped + ' skipped — roster changed?)' : '') + '. REVIEW the values, then tap PARS’s own Save / Certify. Nothing was submitted automatically.');
   }
 
-  if (navigator.clipboard && navigator.clipboard.readText) {
-    navigator.clipboard.readText().then(fillFrom, function () {
-      if (IN_SHORTCUT) { finish('Couldn’t read the clipboard — in the PARS Attendance app tap 📋 Copy marks, then run PARS Fill again right away.'); return; }
-      overlay('Couldn’t read the clipboard (permission declined?) — paste the marks manually:', true);
+  /** Clipboard reads need a USER GESTURE on iOS — a Shortcut run isn't one, but a tap on a
+   *  page button is. So when the direct read is refused, show a big button; its click handler
+   *  retries readText inside the gesture (iOS then shows its normal "Allow Paste" bubble), with
+   *  the manual paste box as the fallback of last resort. Requires page-world listeners — the
+   *  Shortcuts stub injects this file as an inline <script> for exactly that reason. */
+  function promptForMarks() {
+    overlay('Marks copied in the PARS Attendance app? Tap the button — iOS will ask to allow the paste.', true);
+    var box = document.getElementById(BOX_ID);
+    var read = document.createElement('button');
+    read.textContent = '📥 Read marks from clipboard & fill';
+    read.style.cssText = 'margin-top:14px;width:100%;padding:18px;border-radius:14px;border:0;background:#30d158;color:#000;font-size:32px;font-weight:600';
+    read.addEventListener('click', function () {
+      navigator.clipboard.readText().then(fillFrom, function () {
+        overlay('iOS declined the clipboard read — paste the marks manually below:', true);
+      });
     });
-  } else if (IN_SHORTCUT) {
-    finish('This browser blocks clipboard reads — copy the marks and use the desktop extension instead.');
+    box.insertBefore(read, box.children[1]); // right under the message, above the paste box
+  }
+
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    navigator.clipboard.readText().then(fillFrom, function () { promptForMarks(); });
   } else {
     overlay('Paste the marks from the PARS Attendance app:', true);
   }
+  if (IN_SHORTCUT) { try { completion('PARS Fill loaded — use the panel on the page.'); } catch (_) {} }
 })();
 
 })();

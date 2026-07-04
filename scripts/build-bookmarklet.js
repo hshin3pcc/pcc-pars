@@ -45,7 +45,11 @@ function build() {
   // "?v="+Date.now(): a UNIQUE query per run gives the CDN a cache-miss every time, so the
   // phone always executes the freshly pushed code. (cache:"no-store" only bypasses the BROWSER
   // cache — live debugging showed the edge kept serving a stale fill.js for its max-age.)
-  const shortcutSrc = 'fetch("' + FILL_URL + '?v="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(function(s){eval(s)}).catch(function(e){if(typeof completion==="function")completion("PARS Fill: could not load the code ("+e+") - check the connection and try again")});';
+  // The stub injects fill.js as an INLINE <script> so it executes in the PAGE world: listeners
+  // survive the Shortcut's completion, and a button tap there is a real user gesture (unlocks
+  // navigator.clipboard.readText with iOS's Allow-Paste bubble). Can't use <script src=raw…> —
+  // raw serves text/plain with nosniff, which blocks external script tags; fetch + inline is fine.
+  const shortcutSrc = 'fetch("' + FILL_URL + '?v="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.text()}).then(function(t){var s=document.createElement("script");s.textContent=t;(document.head||document.documentElement).appendChild(s);if(typeof completion==="function")completion("PARS Fill loaded - use the panel on the page")}).catch(function(e){if(typeof completion==="function")completion("PARS Fill: could not load the code ("+e+") - check the connection and try again")});';
   new Function('completion', shortcutSrc); // parse gate for the stub too
 
   const html = `<!doctype html>

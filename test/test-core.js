@@ -171,7 +171,7 @@ const bk = require('../scripts/build-bookmarklet').build();
 ok(bk.url.indexOf('javascript:') === 0 && bk.bytes < 60000, `bookmarklet builds + parses (${bk.bytes} bytes, under the Safari limit)`);
 ok(bk.html === fs.readFileSync(path.join(__dirname, '..', 'pwa', 'fill.html'), 'utf8'),
   'pwa/fill.html is current (run `npm run build-bookmarklet` after editing core/bookmarklet)');
-ok(bk.shortcutSrc.length < 500 && bk.shortcutSrc.indexOf('\n') < 0 && !/[^\x20-\x7e]/.test(bk.shortcutSrc),
+ok(bk.shortcutSrc.length < 800 && bk.shortcutSrc.indexOf('\n') < 0 && !/[^\x20-\x7e]/.test(bk.shortcutSrc),
   `Shortcuts stub is tiny one-line ASCII (${bk.shortcutSrc.length} chars — immune to paste truncation)`);
 ok(bk.shortcutSrc.indexOf('raw.githubusercontent.com/hshin3pcc/pcc-pars/main/pwa/fill.js') >= 0 && /completion/.test(bk.shortcutSrc),
   'stub fetches fill.js from raw (push-instant, no deploy pipeline) and completes on failure');
