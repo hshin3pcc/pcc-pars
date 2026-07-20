@@ -16,6 +16,10 @@
   // .local, never .sync) so a reload doesn't lose work; the stored value contains student IINs (never
   // names) and is cleared after a successful Fill. Nothing leaves the device.
   let minutes = {};
+  // Has Henry marked anything this week (now, or restored from storage)? Gates the "All present"
+  // overwrite confirm — scraped PARS defaults alone (blank cells read as 0) must NOT trigger it,
+  // or a fresh week would nag on the very first tap.
+  let touched = false;
   let panel = null, listEl = null, statusEl = null, pushBtn = null;
 
   const fullMin = () => (roster && roster.meta.scheduledMinutes) || 195;
@@ -195,13 +199,16 @@
     });
     loadMarks((saved) => {
       minutes = Object.assign(defaults, saved || {});   // restore any saved-but-unsubmitted marks
+      touched = !!(saved && Object.keys(saved).length);
       render();
     });
   }
 
   function allPresent() {
     if (roster.meta.multiMeeting || !roster.meta.scheduledMinutes) return;   // disabled views
-    roster.students.forEach((s) => { minutes[s.iin] = fullMin(); }); saveMarks(); render();
+    if (touched && C.hasNonFullMarks(roster.students, minutes, fullMin()) &&
+        !confirm('Set everyone to full? The absences/partials you’ve marked for this week will be overwritten.')) return;
+    roster.students.forEach((s) => { minutes[s.iin] = fullMin(); }); touched = true; saveMarks(); render();
   }
 
   function setMin(iin, val) {
@@ -209,6 +216,7 @@
     const m = Math.round(Number(val));
     if (!Number.isFinite(m)) return;
     minutes[iin] = Math.max(0, Math.min(fullMin(), m));   // clamp 0..full
+    touched = true;
     saveMarks();
   }
 

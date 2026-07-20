@@ -78,7 +78,27 @@ shell is just code (no student data), so hosting it exposes nothing. After insta
 - `npm run build-pwa` copies `src/core.js` into `pwa/` (single source of truth); run it after editing core.
 - *(Optional)* drop a 180×180 `pwa/icon.png` + an `apple-touch-icon` link for a nicer home-screen icon; it installs fine without one.
 
+## GitHub Pages troubleshooting
+
+When `https://<you>.github.io/pcc-pars/pwa/` won't load or Settings → Pages shows a failed build,
+check in this order:
+1. **Is `.nojekyll` still at the repo root?** It's an empty file next to `README.md` — its presence
+   tells Pages to publish the tree as plain static files instead of routing it through the Jekyll
+   builder. Without it, Pages can fail outright (this happened once: two contentless "Page build
+   failed" runs during a GitHub Pages incident, fixed by adding `.nojekyll`). A rebase or root
+   cleanup could drop it silently — confirm it's still there before anything else.
+2. **Is the deploy queue jammed?** Check the Actions tab (or Settings → Pages) for runs stuck on
+   "Queued." This happened once too — two runs stuck queued for over an hour, blocking the lane —
+   and the fix was a no-op push (`git commit --allow-empty -m "Redeploy" && git push`) to force a
+   fresh deploy; no code change was needed.
+3. Only once both of those check out clean is it worth suspecting the site content itself.
+
 ## Develop
 - `src/core.js` — pure scrape/convert/fill logic (no browser globals; same code runs in the page and in tests).
 - `src/content.js` — injects the panel and wires it to the live PARS page.
 - `npm install && npm test` — runs the core logic against a real-structure PARS fixture (jsdom).
+- **Storage-schema rule (PWA):** `pwa/app.js` keeps everything under one localStorage key (`pars.v2`).
+  If the stored shape ever changes, bump the key **and write a migration read from the old key** —
+  a bare key bump looks like a fresh install and silently discards any un-filed week (this bit once:
+  `78cf26e` moved `pars.classes`/`pars.current` → `pars.v2` with no migration). Same rule applies to
+  the extension's `chrome.storage.local` keys (`pars:<date>:<label>`, `pars.phonebundle`, `pars.marksbundle`).

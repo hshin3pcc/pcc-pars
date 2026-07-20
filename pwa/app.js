@@ -95,7 +95,11 @@
     if (!Number.isFinite(m)) return;
     e.minutes[iin] = Math.max(0, Math.min(fullMin(e), m)); save();
   }
-  function allPresent() { const e = cur(); if (!e) return; e.minutes = freshMinutes(e); save(); render(); }
+  function allPresent() {
+    const e = cur(); if (!e) return;
+    if (hasMarks(e) && !confirm('Set everyone to full? The absences/partials you’ve marked for this week will be overwritten.')) return;
+    e.minutes = freshMinutes(e); save(); render();
+  }
   function stepWeek(n) {
     const e = cur(); if (!e) return;
     if (hasMarks(e) && !confirm('Move to a different week? The current marks will be cleared — make sure they’re filed in PARS first.')) return;
