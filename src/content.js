@@ -59,6 +59,9 @@
       '<div class="ph-tools" id="ph-storedrow" style="display:none">' +
       '<button class="ph-fillstored">📥 Fill from phone marks</button>' +
       '</div>' +
+      '<div class="ph-tools">' +
+      '<button class="ph-fromchef">🎼 Load marks from chef</button>' +
+      '</div>' +
       '<div id="ph-rosterbox" style="display:none;padding:10px 12px;background:#fff;border-bottom:1px solid #e3e3e6">' +
       '<div style="font-size:12px;color:#555;margin-bottom:4px">Roster — select all & copy (⌘C), then paste on your phone:</div>' +
       '<textarea id="ph-rosterout" rows="2" readonly style="width:100%;font:11px ui-monospace,monospace"></textarea>' +
@@ -86,6 +89,7 @@
     });
     panel.querySelector('.ph-fillpasted').addEventListener('click', fillFromPhone);
     panel.querySelector('.ph-fillstored').addEventListener('click', fillStored);
+    panel.querySelector('.ph-fromchef').addEventListener('click', () => fillFromChef());
     pushBtn.addEventListener('click', push);
     getBundle((arr) => updateBundleCount(arr.length));   // restore the count on open
   }
@@ -186,6 +190,55 @@
       if (!entry.marks || !entry.marks.length) { status(`“${live.meta.label}” was already filled from these phone marks${entry.filledAt ? ` (${fmtDate(entry.filledAt)})` : ''} — re-copy on the phone and paste to fill again.`); return; }
       fillEntry(entry, live, store);
     });
+  }
+
+  // ---- Chef bridge (Phase 3): pull the rehearsal's marks straight from chef (the orchestra app,
+  // where Henry taps attendance from the podium) into the CAPTURE GRID — not straight into PARS, so
+  // review + Fill + Save/Certify stay exactly the human steps they were. The class length sent to
+  // chef is the LIVE scraped scheduledMinutes, so chef's present/late math always matches whatever
+  // PARS says the class is worth this term (185, 195…), never a hardcoded constant. ----
+  function fillFromChef(promptedToken) {
+    const live = C.parseRoster(document);
+    if (!live.students.length || live.meta.multiMeeting || !live.meta.scheduledMinutes) {
+      status('Open the class + an open week in PARS first (single-meeting weeks only), then try chef again.');
+      return;
+    }
+    const d = live.meetingDate;
+    const date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+    status('Fetching marks from chef…');
+    chrome.runtime.sendMessage(
+      { type: 'chef-pars', date, fullMinutes: live.meta.scheduledMinutes, token: promptedToken },
+      (resp) => {
+        if (!resp) { status('Chef bridge unavailable — reload the extension (chrome://extensions).'); return; }
+        if (resp.needsToken) {
+          const t = window.prompt(resp.badToken
+            ? 'Chef rejected that token — paste the current runner token (CHEF_RUNNER_TOKEN in Henry\'s OS .env):'
+            : 'One-time setup: paste the chef runner token (CHEF_RUNNER_TOKEN in Henry\'s OS .env). Stored on this Mac only.');
+          if (t && t.trim()) fillFromChef(t.trim());
+          else status('Chef fill cancelled — no token given.');
+          return;
+        }
+        if (resp.error) { status(`Chef fetch failed: ${resp.error}`); return; }
+        if (!resp.rows.length) { status(`Chef has no attendance recorded for ${fmtDate(d)} — mark the rehearsal in chef first (Events → Attend).`); return; }
+        const conv = C.chefMarksToMinutes(resp.rows, live.students, live.meta.scheduledMinutes);
+        if (!conv.matched) {
+          status(`Chef sent ${resp.rows.length} record(s) for ${fmtDate(d)}, but none matched this roster's IDs — check the PCC IDs on chef's member rows.`);
+          return;
+        }
+        // Load into the grid over fresh PARS defaults (same baseline as ↻ Reload roster).
+        roster = live;
+        const defaults = {};
+        live.students.forEach((s) => {
+          defaults[s.iin] = Math.round((s.currentHours != null ? s.currentHours : live.meta.fullHours || 0) * unit());
+        });
+        minutes = Object.assign(defaults, conv.minutes);
+        touched = true; saveMarks(); render();
+        const misses = conv.unmatchedChef.length
+          ? ` ${conv.unmatchedChef.length} chef record(s) had no matching student here: ${conv.unmatchedChef.slice(0, 4).join(', ')}${conv.unmatchedChef.length > 4 ? '…' : ''}.`
+          : '';
+        status(`Loaded ${conv.matched} of ${resp.rows.length} chef mark(s) into the grid.${misses} Review, then Fill PARS.`);
+      }
+    );
   }
 
   function open() { if (!roster) rescan(); panel.classList.add('open'); }

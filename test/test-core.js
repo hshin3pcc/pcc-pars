@@ -184,5 +184,27 @@ ok(/function finish\(/.test(bk.fillJs) && !/\n?if \(typeof completion === "funct
 ok(/completion\(msg/.test(bk.fillJs),
   'finish() passes the message to completion() (shows in a Show Alert/Result action — belt for the overlay)');
 
+// chef bridge: chef PARS rows -> the minutes grid, matched by normalized IIN (fail closed both ways)
+const chefStudents = [
+  { iin: '0012345', name: 'Lead Zero' },
+  { iin: '7654321', name: 'Plain Id' },
+];
+ok(core.normIin('0012345') === '12345' && core.normIin(' 76-54321 ') === '7654321',
+  'normIin strips non-digits + leading zeros');
+const chefRows = [
+  { pcc_id: '12345', pars_minutes: 195, full_name: 'Lead Zero' },      // matches despite chef missing the 00
+  { pcc_id: '7654321', pars_minutes: 175, full_name: 'Plain Id' },     // 20 min late
+  { pcc_id: '9999999', pars_minutes: 195, full_name: 'Not Enrolled' }, // chef-only person
+];
+const conv = core.chefMarksToMinutes(chefRows, chefStudents, 195);
+ok(conv.matched === 2 && conv.minutes['0012345'] === 195 && conv.minutes['7654321'] === 175,
+  'chef rows map to grid minutes by normalized IIN (leading-zero mismatch tolerated)');
+ok(conv.unmatchedChef.length === 1 && conv.unmatchedChef[0] === 'Not Enrolled',
+  'unmatched chef records are reported, never guessed onto a student');
+ok(core.chefMarksToMinutes([{ pcc_id: '7654321', pars_minutes: 500 }], chefStudents, 195).minutes['7654321'] === 195,
+  'chef minutes are clamped to the live class length');
+ok(core.chefMarksToMinutes([{ pcc_id: '7654321', pars_minutes: 0 }], chefStudents, 195).minutes['7654321'] === 0,
+  'absent (0 minutes) survives as an explicit zero, not a skip');
+
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);

@@ -219,5 +219,38 @@
     return entries.find((e) => e && e.label === label && e.meetingDate === meetingDate) || null;
   }
 
-  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, planAutoRoll, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle, matchBundleEntry };
+  // ---- Chef bridge (Phase 3): chef (the orchestra app, pccorch.onrender.com) records attendance
+  // at rehearsal; its /api/runner/pars feed returns per-student MINUTES PRESENT for a date
+  // (present = full session, late = full − minutes missed, excused/absent = 0). These helpers turn
+  // that feed into the same minutes-grid marks the phone path uses — review + Fill + Save stay
+  // exactly the human steps they always were. ----
+
+  /** Normalize a student ID for matching: digits only, leading zeros dropped (older PARS IINs
+   *  carry leading 00s that chef's Notion-era data sometimes lacks, and vice versa). */
+  function normIin(v) { return String(v == null ? '' : v).replace(/\D/g, '').replace(/^0+/, ''); }
+
+  /**
+   * Map chef PARS rows ({pcc_id, pars_minutes, full_name}) onto the on-screen roster. Matching is
+   * by normalized ID, FAIL CLOSED both ways: chef rows with no matching student are reported (never
+   * guessed onto someone), and students with no chef row are left untouched (they keep whatever the
+   * grid already shows). Minutes are clamped to [0, fullMin].
+   * Returns { minutes: {iin: min}, matched, unmatchedChef: [names] }.
+   */
+  function chefMarksToMinutes(rows, students, fullMin) {
+    const byNorm = {};
+    (students || []).forEach((s) => { const n = normIin(s.iin); if (n) byNorm[n] = s.iin; });
+    const minutes = {};
+    const unmatchedChef = [];
+    (rows || []).forEach((r) => {
+      const n = normIin(r && r.pcc_id);
+      const iin = n && byNorm[n];
+      if (!iin) { unmatchedChef.push((r && r.full_name) || 'unknown'); return; }
+      let m = Math.max(0, Math.round(Number(r && r.pars_minutes) || 0));
+      if (fullMin != null) m = Math.min(fullMin, m);
+      minutes[iin] = m;
+    });
+    return { minutes, matched: Object.keys(minutes).length, unmatchedChef };
+  }
+
+  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, planAutoRoll, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle, matchBundleEntry, normIin, chefMarksToMinutes };
 });

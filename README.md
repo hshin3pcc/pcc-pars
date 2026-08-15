@@ -102,3 +102,24 @@ check in this order:
   a bare key bump looks like a fresh install and silently discards any un-filed week (this bit once:
   `78cf26e` moved `pars.classes`/`pars.current` → `pars.v2` with no migration). Same rule applies to
   the extension's `chrome.storage.local` keys (`pars:<date>:<label>`, `pars.phonebundle`, `pars.marksbundle`).
+
+## Phase 3 — chef bridge (built)
+
+The orchestra now records attendance in **chef** (the ensemble app at `pccorch.onrender.com` — see the
+`chef` sibling repo): Henry taps P / L-with-minutes-late / E / A from the podium during rehearsal. This
+phase pulls those marks into the helper so PARS entry becomes review-and-click:
+
+1. In PARS: select the class + open week as usual → **📋 PARS Helper** → **🎼 Load marks from chef**.
+2. First use only: paste the chef **runner token** (`CHEF_RUNNER_TOKEN` in Henry's OS `.env`) — kept in
+   `chrome.storage.local` on this Mac only, and only after a fetch with it succeeds.
+3. The helper fetches chef's `/api/runner/pars` for the on-screen **meeting date**, passing the **live
+   scraped class length** as the full-session minutes — so chef's math (present = full, late = full −
+   minutes missed, excused/absent = 0) always matches what PARS says the class is worth this term,
+   never a hardcoded number.
+4. Marks land in the **capture grid** (not straight into PARS), matched by student ID — normalized so
+   leading-zero IIN differences don't miss, unmatched chef records are *reported never guessed*, and
+   students with no chef record keep their current value. Then the normal flow: review → **Fill PARS** →
+   PARS's own **Save now / Certify week**.
+
+Privacy stance unchanged: the fetch goes to Henry's own system of record (no third-party service), the
+extension still never saves or certifies, and the service worker is the only place the token lives.
