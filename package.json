@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node test/test-core.js",
     "build-pwa": "cp src/core.js pwa/core.js",
-    "build-bookmarklet": "node scripts/build-bookmarklet.js"
+    "build-bookmarklet": "node scripts/build-bookmarklet.js",
+    "build-ios": "node scripts/build-ios.js"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"

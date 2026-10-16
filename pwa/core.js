@@ -39,7 +39,8 @@
    *  even then it is NAMED in `rolled`, because the app cannot know whether that all-present week was
    *  ever actually FILED in PARS. The banner is the guardrail against silently losing an unfiled week.
    *  A stale week holding marks goes to `stuck` (kept + flagged, never rolled).
-   *  Returns { rolled:[{key,label,fromDate}], stuck:[{key,label,weekDate}] }. */
+   *  Returns { rolled:[{key,label,fromDate,filed}], stuck:[{key,label,weekDate}] } — `filed` is true when the
+   *  roll was justified by a PARS fill receipt (iOS app) rather than by the week being all-present. */
   function planAutoRoll(entries, todayYmd) {
     const rolled = [], stuck = [];
     Object.keys(entries || {}).forEach((k) => {
@@ -48,10 +49,43 @@
       const full = e.roster.scheduledMinutes || 195;
       const curWeek = weekdayInWeekOf(e.roster.dayOfWeek, todayYmd);
       if (!(e.weekDate < curWeek)) return;                                        // current/future week: left alone
-      if (hasNonFullMarks(e.roster.students, e.minutes, full)) stuck.push({ key: k, label: e.roster.label, weekDate: e.weekDate });
-      else rolled.push({ key: k, label: e.roster.label, fromDate: e.weekDate });
+      // iOS app: a fill receipt for THIS exact week (e.filedWeek === e.weekDate) means the marks are in PARS,
+      // so the week may roll even though it holds absences/partials. Without a receipt the old rule stands.
+      const filed = (!!e.filedWeek && e.filedWeek === e.weekDate) || !!(e.filed && e.filed[e.weekDate]);
+      if (!filed && hasNonFullMarks(e.roster.students, e.minutes, full)) stuck.push({ key: k, label: e.roster.label, weekDate: e.weekDate });
+      else rolled.push({ key: k, label: e.roster.label, fromDate: e.weekDate, filed });
     });
     return { rolled, stuck };
+  }
+
+  /** Week history (Phase 2.3): a class entry keeps EVERY week it has shown, `weeks: { [ymd]: minutes }`,
+   *  plus `filed: { [ymd]: true }` receipts. Past weeks that still hold an absence/partial and were never
+   *  marked filed are the ones worth a reminder — sorted oldest first. The week on screen counts only when
+   *  it is itself in the past. Pure; never throws on a malformed entry. */
+  function unfiledPastWeeks(e, todayYmd) {
+    if (!e || !e.roster || e.roster.dayOfWeek == null || !e.weeks || typeof e.weeks !== 'object') return [];
+    const full = e.roster.scheduledMinutes || 195;
+    const curWeek = weekdayInWeekOf(e.roster.dayOfWeek, todayYmd);
+    return Object.keys(e.weeks).filter((d) => d < curWeek && !(e.filed && e.filed[d]) && !(e.filedWeek === d)
+      && hasNonFullMarks(e.roster.students, e.weeks[d], full)).sort();
+  }
+  /** Marks-bundle entries for EVERY stored week of every class (oldest first), so one paste on the Mac
+   *  (or one Shortcut run) can fill any week PARS is showing — including a past week being corrected.
+   *  Entries without a `weeks` map fall back to the single week on screen. Students missing a mark export
+   *  as full. */
+  function bundleEntriesFromClasses(classes) {
+    const out = [];
+    Object.keys(classes || {}).forEach((k) => {
+      const c = classes[k];
+      if (!c || !c.roster || !Array.isArray(c.roster.students)) return;
+      const full = c.roster.scheduledMinutes || 195;
+      const weeks = (c.weeks && typeof c.weeks === 'object' && Object.keys(c.weeks).length) ? c.weeks : (c.weekDate ? { [c.weekDate]: c.minutes || {} } : {});
+      Object.keys(weeks).sort().forEach((d) => {
+        const m = weeks[d] || {};
+        out.push({ label: c.roster.label, meetingDate: d, marks: c.roster.students.filter((s) => s && s.iin != null).map((s) => ({ iin: s.iin, minutes: m[s.iin] != null ? m[s.iin] : full })) });
+      });
+    });
+    return out;
   }
 
   /** Reconcile a minutes map to a new roster (add/drop): keep a continuing student's mark, default a new
@@ -252,5 +286,5 @@
     return { minutes, matched: Object.keys(minutes).length, unmatchedChef };
   }
 
-  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, planAutoRoll, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle, matchBundleEntry, normIin, chefMarksToMinutes };
+  return { round1, minutesToHours, dayOfWeekOf, weekdayInWeekOf, shiftWeeks, ymdFromDate, hasNonFullMarks, planAutoRoll, unfiledPastWeeks, bundleEntriesFromClasses, reconcileMinutes, parseMeta, editableInput, editableInputs, meetingDateOf, parseRoster, buildFillPlan, applyFill, toRosterBlob, encodeRoster, decodeRoster, encodeBundle, decodeBundle, encodeMarks, decodeMarks, encodeMarksBundle, decodeMarksBundle, matchBundleEntry, normIin, chefMarksToMinutes };
 });

@@ -54,6 +54,8 @@
       '</div>' +
       '<div class="ph-tools">' +
       '<button class="ph-fromphone">📥 Paste marks from phone</button>' +
+      '<button class="ph-openfile" title="Read a pars-marks-….txt the phone AirDropped (Downloads)">📂 Open marks file</button>' +
+      '<input type="file" id="ph-marksfile" accept=".txt,text/plain" style="display:none">' +
       '<button class="ph-clearbundle">🗑 Clear bundle</button>' +
       '</div>' +
       '<div class="ph-tools" id="ph-storedrow" style="display:none">' +
@@ -88,6 +90,14 @@
       if (b.style.display === 'block') panel.querySelector('#ph-marksin').focus();
     });
     panel.querySelector('.ph-fillpasted').addEventListener('click', fillFromPhone);
+    // AirDrop path (Universal Clipboard is flaky on some networks): the phone's 📡 Share drops a small
+    // .txt in Downloads; reading it here feeds the exact same paste logic — one file, every week stored.
+    panel.querySelector('.ph-openfile').addEventListener('click', () => panel.querySelector('#ph-marksfile').click());
+    panel.querySelector('#ph-marksfile').addEventListener('change', (ev) => {
+      const f = ev.target.files && ev.target.files[0]; if (!f) return;
+      f.text().then((t) => { panel.querySelector('#ph-marksin').value = t.trim(); ev.target.value = ''; fillFromPhone(); },
+        () => status('Couldn’t read that file — open it in TextEdit, copy everything, and use 📥 Paste marks from phone.'));
+    });
     panel.querySelector('.ph-fillstored').addEventListener('click', fillStored);
     panel.querySelector('.ph-fromchef').addEventListener('click', () => fillFromChef());
     pushBtn.addEventListener('click', push);
@@ -157,7 +167,7 @@
     setMarksBundle(store, () => updateStoredButton(live));
     const left = (store.classes || []).filter((e) => e && e.marks && e.marks.length).length;
     status(`Filled ${r.written} into “${live.meta.label}”${r.skipped ? ` (${r.skipped} skipped)` : ''}. Review + Save/Certify.` +
-      (left ? ` ${left} class(es) still stored — select the next class in PARS and click 📥 Fill from phone marks (no re-paste).` : ' All stored classes are filled.'));
+      (left ? ` ${left} class/week(s) still stored — select the next class + week in PARS and click 📥 Fill from phone marks (no re-paste).` : ' All stored class/weeks are filled.'));
   }
 
   function fillFromPhone() {
@@ -174,7 +184,7 @@
       const entry = C.matchBundleEntry(store.classes, live.meta.label, live.meetingDate);
       if (!entry) {
         updateStoredButton(live);
-        status(`Stored ${store.classes.length} class(es) of phone marks — but none match “${live.meta.label}” for ${fmtDate(live.meetingDate)}. Select a matching class + week in PARS and click 📥 Fill from phone marks.`);
+        status(`Stored ${store.classes.length} class/week(s) of phone marks — but none match “${live.meta.label}” for ${fmtDate(live.meetingDate)}. Select a matching class + week in PARS and click 📥 Fill from phone marks.`);
         return;
       }
       fillEntry(entry, live, store);

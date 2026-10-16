@@ -10,12 +10,24 @@
  * absence/partial is LEFT ALONE and flagged — you file it in PARS or explicitly roll forward (with a
  * confirm). Step weeks with ◀ ▶; "📅 This week" rolls past weeks forward. Re-load only when a student
  * adds/drops — re-loading keeps your marks.
- * Fully offline + local; Copy marks hands everything back via Universal Clipboard. Nothing leaves the device.
+ * Phase 2.3 — WEEK HISTORY: every week a class has shown stays on the phone (`weeks[ymd]`), so stepping
+ * ◀ ▶ never clears anything, auto-roll never discards, and a past week can be revisited and re-filed.
+ * Copy/Share exports EVERY stored week (the Mac helper + Shortcut match by class + date, fail closed).
+ * Fully offline + local; Copy marks hands everything back via Universal Clipboard, 📡 Share via AirDrop
+ * (or Messages/Mail) when Universal Clipboard won't cooperate. Nothing leaves the device otherwise.
  */
 (function () {
   const C = window.PARSCore;
   const LS = 'pars.v2';
-  // classes: { [label]: { roster:{label,scheduledMinutes,unit,dayOfWeek,students}, weekDate, minutes } }
+  // iOS app mode (Phase 4): the native shell hosts this page next to an embedded, signed-in PARS view and
+  // relays messages between them. In the app, rosters arrive from PARS by themselves (no Load step), marks
+  // go over as "Push to PARS" (no clipboard), PARS answers with a fill receipt, and the shell persists our
+  // state (localStorage on a file:// view isn't trustworthy). Outside the app nothing changes.
+  const APP = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pars);
+  const native = (msg) => { if (APP) { try { window.webkit.messageHandlers.pars.postMessage(msg); } catch (_) {} } };
+  // classes: { [label]: { roster:{label,scheduledMinutes,unit,dayOfWeek,students}, weekDate, minutes,
+  //                        weeks:{ [ymd]: minutes }, filed:{ [ymd]: true } } }
+  // INVARIANT: minutes === weeks[weekDate] (same object) — `minutes` stays for older readers of pars.v2.
   let classes = {};
   let current = null;
   let saveOk = true, bannerMsg = '';
@@ -33,32 +45,57 @@
   const thisWeekDate = (e) => C.weekdayInWeekOf(e.roster.dayOfWeek, todayYmd());
   const isStale = (e) => e.weekDate < thisWeekDate(e);
   const hasMarks = (e) => C.hasNonFullMarks(e.roster.students, e.minutes, fullMin(e));
+  const isFiled = (e) => !!(e.filed && e.filed[e.weekDate]);   // filed in PARS (receipt from the app, or ✓ tapped by hand)
 
   function save() {
-    try { localStorage.setItem(LS, JSON.stringify({ classes, current })); saveOk = true; }
-    catch (_) { saveOk = false; status('⚠️ Couldn’t save on this device — Copy marks to PARS before closing the app.'); }
+    const state = { classes, current };
+    if (APP) native({ type: 'save', state });   // the shell writes it to disk and re-injects it on next launch
+    try { localStorage.setItem(LS, JSON.stringify(state)); saveOk = true; }
+    catch (_) { saveOk = APP; if (!APP) status('⚠️ Couldn’t save on this device — Copy marks to PARS before closing the app.'); }
   }
   function restore() {
-    try { const o = JSON.parse(localStorage.getItem(LS) || '{}'); classes = (o && o.classes && typeof o.classes === 'object' && !Array.isArray(o.classes)) ? o.classes : {}; current = (o && o.current) || null; }
+    try {
+      const injected = (APP && window.__PARS_STATE__ && typeof window.__PARS_STATE__ === 'object') ? window.__PARS_STATE__ : null;
+      const o = injected || JSON.parse(localStorage.getItem(LS) || '{}');
+      classes = (o && o.classes && typeof o.classes === 'object' && !Array.isArray(o.classes)) ? o.classes : {}; current = (o && o.current) || null;
+    }
     catch (_) { classes = {}; current = null; }
-    Object.keys(classes).forEach((k) => { const e = classes[k]; if (!e || !e.roster || !Array.isArray(e.roster.students) || e.roster.dayOfWeek == null || !e.weekDate) delete classes[k]; });
+    Object.keys(classes).forEach((k) => { const e = classes[k]; if (!e || !e.roster || !Array.isArray(e.roster.students) || e.roster.dayOfWeek == null || !e.weekDate) delete classes[k]; else migrate(e); });
     if (!current || !classes[current]) current = Object.keys(classes)[0] || null;
   }
+  /** Same key (pars.v2), additive shape: a pre-history entry has only { weekDate, minutes } — fold it into
+   *  weeks[] so nothing is lost on upgrade, and re-link `minutes` to the showing week after JSON round-trip. */
+  function migrate(e) {
+    if (!e.weeks || typeof e.weeks !== 'object' || Array.isArray(e.weeks)) e.weeks = {};
+    if (!e.filed || typeof e.filed !== 'object' || Array.isArray(e.filed)) e.filed = {};
+    if (e.filedWeek) { e.filed[e.filedWeek] = true; delete e.filedWeek; }
+    if (!e.weeks[e.weekDate]) e.weeks[e.weekDate] = (e.minutes && typeof e.minutes === 'object') ? e.minutes : freshMinutes(e);
+    e.minutes = e.weeks[e.weekDate];
+  }
   function freshMinutes(e) { const m = {}; e.roster.students.forEach((s) => { m[s.iin] = fullMin(e); }); return m; }
-  function roll(e) { e.weekDate = thisWeekDate(e); e.minutes = freshMinutes(e); }
+  /** Show a week: its marks come from history, or start all-present. Never discards another week. */
+  function showWeek(e, ymd) { e.weekDate = ymd; if (!e.weeks[ymd]) e.weeks[ymd] = freshMinutes(e); e.minutes = e.weeks[ymd]; }
+  function setMinutes(e, m) { e.weeks[e.weekDate] = m; e.minutes = m; }
+  function roll(e) { showWeek(e, thisWeekDate(e)); }
 
-  /** On open: auto-roll a past week ONLY when it has no marks (nothing to lose) — and NAME every
-   *  auto-rolled week in the banner, since the app can't know whether that all-present week was ever
-   *  filed in PARS. A past week holding absences/partials is left alone and flagged — never silently
-   *  discard (or silently advance past) captured attendance. Decision logic: core.planAutoRoll (tested). */
+  /** On open: every class advances to the current week — with history nothing is lost by moving, so a
+   *  past week never blocks today's capture. The banner still NAMES what needs attention: past weeks
+   *  holding absences/partials that were never marked filed (tap ◀ to revisit), and all-present weeks
+   *  just advanced past without a receipt (core.planAutoRoll — the app can't know they were filed). */
   function autoRollOnOpen() {
-    const plan = C.planAutoRoll(classes, todayYmd());
-    plan.rolled.forEach((r) => roll(classes[r.key]));
-    const parts = [];
-    if (plan.stuck.length) parts.push(`Un-filed attendance from a past week: ${plan.stuck.map((s) => s.label).join(', ')}. File it in PARS, or tap 📅 This week to start fresh.`);
-    if (plan.rolled.length) parts.push(`Auto-advanced to this week: ${plan.rolled.map((r) => `${r.label} (was ${fmtDate(r.fromDate)})`).join(', ')} — those weeks were all-present; if one was never filed in PARS, tap ◀ to go back and file it.`);
-    bannerMsg = parts.join('  ');
+    const today = todayYmd();
+    const plan = C.planAutoRoll(classes, today);
+    plan.rolled.concat(plan.stuck).forEach((r) => roll(classes[r.key]));
+    bannerMsg = reminders(plan.rolled.filter((r) => !r.filed), today);
     save();
+  }
+  function reminders(unsure, today) {
+    const parts = [];
+    const open = [];
+    Object.keys(classes).forEach((k) => { const e = classes[k]; C.unfiledPastWeeks(e, today).forEach((d) => open.push(`${e.roster.label} ${fmtDate(d)}`)); });
+    if (open.length) parts.push(`Past weeks with absences not yet marked filed in PARS: ${open.slice(0, 4).join(', ')}${open.length > 4 ? ` and ${open.length - 4} more` : ''}. Tap ◀ to revisit; tap ☐ Filed once they’re in PARS.`);
+    if (unsure && unsure.length) parts.push(`Advanced to this week: ${unsure.map((r) => `${r.label} (was ${fmtDate(r.fromDate)})`).join(', ')} — those weeks were all-present; if one was never filed in PARS, tap ◀ to go back and file it.`);
+    return parts.join('  ');
   }
 
   function addRoster(r) {
@@ -68,11 +105,14 @@
     const students = r.students.filter((s) => s && s.iin != null);
     const roster = { label: r.label, scheduledMinutes: r.scheduledMinutes, unit: r.unit, dayOfWeek: C.dayOfWeekOf(r.meetingDate), students };
     const k = roster.label;
-    if (classes[k]) {   // re-load (add/drop): keep the week, reconcile marks so continuing students keep theirs
-      classes[k] = { roster, weekDate: classes[k].weekDate || r.meetingDate, minutes: C.reconcileMinutes(classes[k].minutes, students, roster.scheduledMinutes) };
+    if (classes[k]) {   // re-load (add/drop): keep every week, reconcile marks so continuing students keep theirs
+      const old = classes[k], weeks = {};
+      Object.keys(old.weeks || {}).forEach((d) => { weeks[d] = C.reconcileMinutes(old.weeks[d], students, roster.scheduledMinutes); });
+      classes[k] = { roster, weekDate: old.weekDate || r.meetingDate, minutes: {}, weeks, filed: old.filed || {} };
+      showWeek(classes[k], classes[k].weekDate);
     } else {
-      classes[k] = { roster, weekDate: r.meetingDate, minutes: {} };
-      classes[k].minutes = freshMinutes(classes[k]);
+      classes[k] = { roster, weekDate: r.meetingDate, minutes: {}, weeks: {}, filed: {} };
+      showWeek(classes[k], r.meetingDate);
     }
     return { key: k };
   }
@@ -98,18 +138,21 @@
   function allPresent() {
     const e = cur(); if (!e) return;
     if (hasMarks(e) && !confirm('Set everyone to full? The absences/partials you’ve marked for this week will be overwritten.')) return;
-    e.minutes = freshMinutes(e); save(); render();
+    setMinutes(e, freshMinutes(e)); save(); render();
   }
-  function stepWeek(n) {
+  function stepWeek(n) {   // just a different page of history — nothing is cleared
     const e = cur(); if (!e) return;
-    if (hasMarks(e) && !confirm('Move to a different week? The current marks will be cleared — make sure they’re filed in PARS first.')) return;
-    e.weekDate = C.shiftWeeks(e.weekDate, n); e.minutes = freshMinutes(e); bannerMsg = ''; save(); render();
+    showWeek(e, C.shiftWeeks(e.weekDate, n)); bannerMsg = ''; save(); render();
   }
-  function rollAll() {   // roll only PAST weeks forward; leave the current week alone
+  function rollAll() {   // bring every class to the current week; past weeks stay in history
     const stale = Object.keys(classes).map((k) => classes[k]).filter(isStale);
     if (!stale.length) { status('All classes are already on the current week.'); return; }
-    if (stale.some(hasMarks) && !confirm('Roll past weeks to this week? Any un-filed marks in those weeks will be cleared — file them in PARS first if needed.')) return;
     stale.forEach(roll); bannerMsg = ''; save(); render();
+  }
+  function toggleFiled() {   // hand receipt: "this week is in PARS" (the Mac path has no automatic one)
+    const e = cur(); if (!e) return;
+    if (e.filed[e.weekDate]) delete e.filed[e.weekDate]; else e.filed[e.weekDate] = true;
+    bannerMsg = ''; save(); render();
   }
 
   function render() {
@@ -118,14 +161,19 @@
     bn.hidden = !bannerMsg; bn.textContent = bannerMsg;
     if (!keys.length || !cur()) {
       sel.hidden = true; wb.hidden = true; $('sub').textContent = 'No roster loaded'; $('tools').hidden = true; $('foot').hidden = true;
-      list.innerHTML = '<div class="empty">Tap <b>⬇︎ Load roster</b> above.<br><br>On your Mac, in the helper, <b>➕ Add</b> each class then <b>📤 Copy bundle</b>, and paste it here — all your classes load at once. You only do this once (re-load when a student adds/drops).</div>';
+      list.innerHTML = APP
+        ? '<div class="empty">No classes yet.<br><br>Open the <b>PARS</b> tab, sign in, and view each class once (any open week) — its roster lands here by itself. Rosters refresh the same way whenever a student adds or drops.</div>'
+        : '<div class="empty">Tap <b>⬇︎ Load roster</b> above.<br><br>On your Mac, in the helper, <b>➕ Add</b> each class then <b>📤 Copy bundle</b>, and paste it here — all your classes load at once. You only do this once (re-load when a student adds/drops).</div>';
       return;
     }
     sel.hidden = false; wb.hidden = false; $('tools').hidden = false; $('foot').hidden = false;
     sel.innerHTML = keys.map((k) => `<option value="${esc(k)}"${k === current ? ' selected' : ''}>${esc(classes[k].roster.label || k)}</option>`).join('');
     const e = cur();
-    $('weeklabel').textContent = `${DOW[e.roster.dayOfWeek]} ${fmtDate(e.weekDate)}` + (isStale(e) ? ' (past)' : '');
-    $('sub').textContent = `${e.roster.students.length} students` + (keys.length > 1 ? ` · ${keys.length} classes` : '');
+    $('weeklabel').textContent = `${DOW[e.roster.dayOfWeek]} ${fmtDate(e.weekDate)}` + (isFiled(e) ? ' ✓ filed' : isStale(e) ? ' (past)' : '');
+    const nWeeks = Object.keys(e.weeks).length;
+    $('sub').textContent = `${e.roster.students.length} students` + (keys.length > 1 ? ` · ${keys.length} classes` : '') + (nWeeks > 1 ? ` · ${nWeeks} weeks stored` : '');
+    $('markfiled').textContent = isFiled(e) ? '✓ Filed in PARS' : '☐ Filed';
+    $('markfiled').classList.toggle('on', isFiled(e));
     list.innerHTML = '';
     e.roster.students.forEach((s) => list.appendChild(card(e, s)));
     if (!saveOk) status('⚠️ Couldn’t save on this device — Copy marks to PARS before closing.');
@@ -150,17 +198,37 @@
     return el;
   }
 
+  // Every stored week of every class goes out (core.bundleEntriesFromClasses): the Mac helper and the
+  // Shortcut pick the entry matching the class + week PARS is showing, so a past week can be re-filed.
+  const summary = (entries) => `${Object.keys(classes).length} class(es), ${entries.length} week-entries`;
   function copyMarks() {
-    const entries = Object.keys(classes).map((k) => {
-      const c = classes[k];
-      return { label: c.roster.label, meetingDate: c.weekDate, marks: c.roster.students.map((s) => ({ iin: s.iin, minutes: c.minutes[s.iin] != null ? c.minutes[s.iin] : fullMin(c) })) };
-    });
+    const entries = C.bundleEntriesFromClasses(classes);
+    if (APP) {   // no clipboard: hand the bundle to the shell, which opens the PARS tab with it
+      native({ type: 'push', bundle: entries });
+      status(`Sent ${summary(entries)} to the PARS tab — pick the class and open week there, tap Fill PARS, then Save now / Certify.`);
+      return;
+    }
     const blob = C.encodeMarksBundle(entries);
-    const done = () => status(`Copied ${entries.length} class(es). On your Mac: paste ONCE into the helper (📥 Paste marks from phone) — then for each class just select it in PARS and click 📥 Fill from phone marks. (Marks stay here until you roll the week forward.)`);
+    const done = () => status(`Copied ${summary(entries)}. On your Mac: paste ONCE into the helper (📥 Paste marks from phone) — then for each class select it + the week in PARS and click 📥 Fill from phone marks. If the paste on the Mac isn’t these marks, use 📡 Share instead.`);
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(blob).then(done, () => showFallback(blob));
     else showFallback(blob);
   }
-  function showFallback(blob) { const ta = $('marksout'); ta.hidden = false; ta.value = blob; ta.focus(); ta.select(); status('Couldn’t auto-copy — tap the box, Select All, Copy.'); }
+  /** Clipboard-free hand-off: Web Share → AirDrop (or Messages/Mail) a small .txt to the Mac; the helper's
+   *  📂 Open marks file reads it. Falls back to sharing plain text, then to the select-all box. */
+  function shareMarks() {
+    const entries = C.bundleEntriesFromClasses(classes);
+    const blob = C.encodeMarksBundle(entries);
+    if (!navigator.share) { showFallback(blob); return; }
+    let data = { title: 'PARS marks', text: blob };
+    try {
+      const file = new File([blob], `pars-marks-${todayYmd()}.txt`, { type: 'text/plain' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) data = { title: 'PARS marks', files: [file] };
+    } catch (_) {}
+    navigator.share(data).then(
+      () => status(`Shared ${summary(entries)}. On your Mac: AirDrop puts pars-marks-${todayYmd()}.txt in Downloads — in the helper click 📂 Open marks file, then per class select it + the week in PARS and click 📥 Fill from phone marks.`),
+      (err) => { if (!(err && err.name === 'AbortError')) showFallback(blob); });
+  }
+  function showFallback(blob) { const ta = $('marksout'); ta.hidden = false; ta.value = blob; ta.focus(); ta.select(); status('Couldn’t auto-copy — tap the box, Select All, Copy (then paste into Messages/Mail to yourself if the Mac clipboard won’t pick it up).'); }
   function clearAll() {
     if (!confirm('Clear ALL classes + attendance from this phone? Do this only to start over (you’ll re-load rosters).')) return;
     classes = {}; current = null; saveOk = true; bannerMsg = '';
@@ -182,8 +250,43 @@
   $('weeknext').addEventListener('click', () => stepWeek(1));
   $('thisweek').addEventListener('click', rollAll);
   $('allpresent').addEventListener('click', allPresent);
+  $('markfiled').addEventListener('click', toggleFiled);
   $('copymarks').addEventListener('click', copyMarks);
+  $('sharemarks').addEventListener('click', shareMarks);
   $('clearbtn').addEventListener('click', clearAll);
+
+  if (APP) {   // in-app chrome: rosters come from the PARS tab, marks go to it
+    $('loadbar').hidden = true;
+    $('copymarks').textContent = '📤 Push to PARS';
+    $('sharemarks').hidden = true;
+  }
+
+  // Entry points the native shell calls (relayed from the embedded PARS view).
+  window.PARSApp = {
+    /** PARS showed a fillable roster: add or refresh that class (marks survive, add/drops reconcile). A
+     *  brand-new class starts on the CURRENT week, not whichever week PARS happened to be showing. */
+    receiveRoster(blob) {
+      try {
+        const existed = !!(blob && classes[blob.label]);
+        const res = addRoster(blob);
+        if (!res.key) { if (res.skipped) status(`PARS roster not loaded — ${res.skipped}.`); return; }
+        const e = classes[res.key];
+        if (!existed) roll(e);
+        if (!current || !classes[current]) current = res.key;
+        save(); render();
+        status(`${existed ? 'Refreshed' : 'Added'} ${e.roster.label} from PARS (${e.roster.students.length} students).`);
+      } catch (_) { /* never let a bad relay brick the app */ }
+    },
+    /** PARS was filled for a class + week: record the receipt against that week in history. */
+    markFiled(info) {
+      try {
+        const e = info && classes[info.label]; if (!e) return;
+        if (!e.weeks[info.meetingDate]) { status(`PARS was filled for ${info.label} ${fmtDate(info.meetingDate)}, but this app has no marks for that week — nothing marked filed.`); return; }
+        e.filed[info.meetingDate] = true; save(); render();
+        status(`Filled ${info.label} ${fmtDate(info.meetingDate)} in PARS (${info.written} students). Tap Save now / Certify week in the PARS tab.`);
+      } catch (_) {}
+    },
+  };
 
   // load state safely — a corrupt blob can never brick the app
   try { restore(); autoRollOnOpen(); render(); } catch (_) { classes = {}; current = null; bannerMsg = ''; render(); }

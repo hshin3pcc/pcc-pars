@@ -150,6 +150,21 @@ const plan4 = core.planAutoRoll({ a: mkEntry('20260601', {}), b: mkEntry('202606
 ok(plan4.rolled.length === 1 && plan4.rolled[0].key === 'a' && plan4.stuck.length === 1 && plan4.stuck[0].key === 'b', 'multi-class: each class decided independently');
 ok(core.planAutoRoll({ bad: { weekDate: '20260601' } }, '20260610').rolled.length === 0 && core.planAutoRoll(null, '20260610').stuck.length === 0, 'malformed/missing entries are skipped, never crash');
 
+// 13a) Week history (Phase 2.3): reminders + the every-week export. A receipt in the `filed` map
+// counts for planAutoRoll exactly like the older `filedWeek`, so the app's hand-tapped ✓ Filed works.
+const hist = { weekDate: '20260608', minutes: { a: 0 }, roster: { label: 'Orch', dayOfWeek: 1, scheduledMinutes: 195, students: studs },
+  weeks: { '20260525': { a: 0 }, '20260601': { a: 195, b: 195, c: 195 }, '20260608': { a: 0 }, '20260518': { b: 100 } }, filed: { '20260525': true } };
+ok(JSON.stringify(core.unfiledPastWeeks(hist, '20260610')) === JSON.stringify(['20260518']), 'unfiledPastWeeks: past weeks with absences and no receipt, oldest first; filed + all-present + current week excluded');
+ok(core.unfiledPastWeeks({ ...hist, filed: {}, filedWeek: '20260518' }, '20260610').length === 1, 'legacy filedWeek receipt is honored too');
+ok(core.unfiledPastWeeks(null, '20260610').length === 0 && core.unfiledPastWeeks({ weekDate: '20260601' }, '20260610').length === 0, 'unfiledPastWeeks: malformed → [], never throws');
+const planF = core.planAutoRoll({ orch: { ...mkEntry('20260601', { a: 0 }), filed: { '20260601': true } } }, '20260610');
+ok(planF.rolled.length === 1 && planF.rolled[0].filed === true, 'planAutoRoll: a `filed` map receipt lets a marked week roll quietly');
+const ent = core.bundleEntriesFromClasses({ orch: hist, legacy: { weekDate: '20260601', minutes: { a: 10 }, roster: { label: 'Band', scheduledMinutes: 100, students: [{ iin: 'a' }, { iin: 'z' }] } }, bad: null });
+ok(ent.length === 5 && ent.map((e) => e.meetingDate).join() === '20260518,20260525,20260601,20260608,20260601', 'bundleEntriesFromClasses: one entry per stored week (oldest first), legacy single-week entry still exports');
+ok(ent[0].label === 'Orch' && ent[0].marks.find((m) => m.iin === 'b').minutes === 100 && ent[0].marks.find((m) => m.iin === 'a').minutes === 195, 'entries carry each week’s own marks; unmarked students export as full');
+ok(ent[4].label === 'Band' && ent[4].marks.find((m) => m.iin === 'z').minutes === 100, 'legacy entry defaults missing marks to its own class length');
+ok(core.matchBundleEntry(ent, 'Orch', '20260518') === ent[0] && core.matchBundleEntry(ent, 'Orch', '20260608') === ent[3], 'a multi-week bundle still selects by class + exact date — a past week can be re-filed');
+
 // 13b) matchBundleEntry — the fail-closed selection used by the stored-bundle fill + the bookmarklet.
 const mbe = [{ label: 'Orch', meetingDate: '20260901', marks: [] }, { label: 'Applied', meetingDate: '20260901', marks: [] }];
 ok(core.matchBundleEntry(mbe, 'Applied', '20260901') === mbe[1], 'matches by label AND date');
@@ -205,6 +220,36 @@ ok(core.chefMarksToMinutes([{ pcc_id: '7654321', pars_minutes: 500 }], chefStude
   'chef minutes are clamped to the live class length');
 ok(core.chefMarksToMinutes([{ pcc_id: '7654321', pars_minutes: 0 }], chefStudents, 195).minutes['7654321'] === 0,
   'absent (0 minutes) survives as an explicit zero, not a skip');
+
+// 16) iOS app (Phase 4) — planAutoRoll honors a PARS fill receipt: a week holding absences may roll ONLY
+// when the app knows PARS was filled for that exact week; a receipt for another week changes nothing.
+const p5 = core.planAutoRoll({ o: Object.assign(mkEntry('20260601', { a: 0 }), { filedWeek: '20260601' }) }, '20260610');
+ok(p5.rolled.length === 1 && p5.rolled[0].filed === true && p5.stuck.length === 0, 'a week with absences but a fill receipt for THAT week rolls (filed:true)');
+ok(core.planAutoRoll({ o: Object.assign(mkEntry('20260601', { a: 0 }), { filedWeek: '20260525' }) }, '20260610').stuck.length === 1, 'a receipt for a DIFFERENT week does not justify rolling');
+ok(core.planAutoRoll({ o: mkEntry('20260601', {}) }, '20260610').rolled[0].filed === false, 'an all-present roll reports filed:false (the banner still names it)');
+
+// 17) iOS bridge — the bar's state machine against the real PARS structure. Fail-closed like everything else.
+const bridge = require('../src/ios-bridge');
+const live = core.parseRoster(new JSDOM(html).window.document);
+const entry = { label: live.meta.label, meetingDate: '20260608', marks: [{ iin: '00000042', minutes: 190 }, { iin: '10000008', minutes: 0 }, { iin: '10000001', minutes: 195 }] };
+const s1 = bridge.bridgeState(live, [entry]);
+ok(s1.kind === 'ready' && s1.total === 3 && s1.absent === 1 && s1.partial === 1, 'ready: the matching entry is counted (3 marks, 1 absent, 1 partial)');
+ok(bridge.barText(s1).button === 'Fill PARS', 'ready state offers the Fill button');
+ok(bridge.bridgeState(live, [{ label: live.meta.label, meetingDate: '20260601', marks: [{ iin: 'x', minutes: 0 }] }]).kind === 'nomatch', 'a different week never matches');
+ok(bridge.bridgeState(live, [{ label: 'Other Class', meetingDate: '20260608', marks: [{ iin: 'x', minutes: 0 }] }]).kind === 'nomatch', 'a different class on the same date never matches');
+ok(bridge.bridgeState(live, []).kind === 'nomatch' && bridge.bridgeState(live, null).kind === 'nomatch', 'no bundle → nomatch (the roster is still reported to the app)');
+ok(bridge.bridgeState(live, [{ label: live.meta.label, meetingDate: '20260608', marks: [], filledAt: '20260609' }]).kind === 'done', 'an already-filled entry → done (no second fill from stale marks)');
+ok(bridge.bridgeState(core.parseRoster(new JSDOM('<p>login</p>').window.document), [entry]).kind === 'noroster' && bridge.bridgeState(null, [entry]).pending.length === 1, 'no roster (SSO/landing page) → noroster, with pending classes listed');
+ok(bridge.bridgeState(core.parseRoster(multiDoc), [entry]).kind === 'multi', 'multi-meeting week → multi (refused, never filled)');
+ok(/Waiting: Other 6\/15/.test(bridge.barText(bridge.bridgeState(live, [{ label: 'Other', meetingDate: '20260615', marks: [{ iin: 'x', minutes: 0 }] }])).text), 'the bar names other classes still waiting to be filled');
+
+// 18) The shipped iOS web assets must be built from the tested sources (`npm run build-ios`).
+const iosBuild = require('../scripts/build-ios');
+Object.keys(iosBuild.build().files).forEach((n) => {
+  const p = path.join(iosBuild.OUT, n);
+  ok(fs.existsSync(p) && fs.readFileSync(p, 'utf8') === iosBuild.build().files[n], `ios/PARSApp/www/${n} is current (run \`npm run build-ios\` after editing pwa/, core, or ios-bridge)`);
+});
+
 
 console.log(`\n${fail === 0 ? '✓ ALL GOOD' : '✗ FAILURES'}: ${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);
