@@ -53,7 +53,13 @@
 <script src="core.js"></script>
 <script src="app.js"></script>
 <script>
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  if ('serviceWorker' in navigator) {
+    // Reload ONCE when an updated worker takes over an already-controlled page, so the page and its
+    // scripts always come from the same shell version (first install has no controller → no reload).
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
 </script>
 </body>
 </html>

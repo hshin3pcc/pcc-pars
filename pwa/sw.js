@@ -1,6 +1,10 @@
 /* Service worker: cache the app shell so capture works fully OFFLINE at the rehearsal hall.
-   Bump CACHE when any shell file changes. Data lives in localStorage, never here. */
-const CACHE = 'pars-pwa-v1';
+   Data lives in localStorage, never here.
+   BUMP CACHE whenever index.html gains an element a script relies on: the per-file background refresh
+   below can leave an OLD page with a NEW script for one load (2026-10-21: app.js threw on a button the
+   cached index.html didn't have yet → blank app). A new CACHE name installs the whole shell at once,
+   and index.html reloads itself when the new worker takes over, so the swap is atomic. */
+const CACHE = 'pars-pwa-v2';
 const SHELL = ['./', 'index.html', 'style.css', 'core.js', 'app.js', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

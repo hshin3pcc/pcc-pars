@@ -34,6 +34,11 @@
   const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   const $ = (id) => document.getElementById(id);
+  // Shell files are cached one by one (sw.js), so after an update a page can briefly load with a newer
+  // script than its HTML — an element added in this version may not exist yet. Never let that throw:
+  // a missing button is simply inert until the next load, and the app still renders.
+  const on = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+  const setText = (id, text, cls, flag) => { const el = $(id); if (!el) return; el.textContent = text; if (cls) el.classList.toggle(cls, !!flag); };
   const todayYmd = () => C.ymdFromDate(new Date());
   const cur = () => (current && classes[current]) || null;
   const fullMin = (e) => (e ? e.roster.scheduledMinutes : 195) || 195;
@@ -172,8 +177,7 @@
     $('weeklabel').textContent = `${DOW[e.roster.dayOfWeek]} ${fmtDate(e.weekDate)}` + (isFiled(e) ? ' ✓ filed' : isStale(e) ? ' (past)' : '');
     const nWeeks = Object.keys(e.weeks).length;
     $('sub').textContent = `${e.roster.students.length} students` + (keys.length > 1 ? ` · ${keys.length} classes` : '') + (nWeeks > 1 ? ` · ${nWeeks} weeks stored` : '');
-    $('markfiled').textContent = isFiled(e) ? '✓ Filed in PARS' : '☐ Filed';
-    $('markfiled').classList.toggle('on', isFiled(e));
+    setText('markfiled', isFiled(e) ? '✓ Filed in PARS' : '☐ Filed', 'on', isFiled(e));
     list.innerHTML = '';
     e.roster.students.forEach((s) => list.appendChild(card(e, s)));
     if (!saveOk) status('⚠️ Couldn’t save on this device — Copy marks to PARS before closing.');
@@ -246,19 +250,19 @@
     else $('loaderr').textContent = r.err || 'That doesn’t look like a PARS roster/bundle. Re-copy it on your Mac and paste again.';
   });
   $('classsel').addEventListener('change', (ev) => { current = ev.target.value; save(); render(); });
-  $('weekprev').addEventListener('click', () => stepWeek(-1));
-  $('weeknext').addEventListener('click', () => stepWeek(1));
-  $('thisweek').addEventListener('click', rollAll);
-  $('allpresent').addEventListener('click', allPresent);
-  $('markfiled').addEventListener('click', toggleFiled);
-  $('copymarks').addEventListener('click', copyMarks);
-  $('sharemarks').addEventListener('click', shareMarks);
-  $('clearbtn').addEventListener('click', clearAll);
+  on('weekprev', () => stepWeek(-1));
+  on('weeknext', () => stepWeek(1));
+  on('thisweek', rollAll);
+  on('allpresent', allPresent);
+  on('markfiled', toggleFiled);
+  on('copymarks', copyMarks);
+  on('sharemarks', shareMarks);
+  on('clearbtn', clearAll);
 
   if (APP) {   // in-app chrome: rosters come from the PARS tab, marks go to it
     $('loadbar').hidden = true;
     $('copymarks').textContent = '📤 Push to PARS';
-    $('sharemarks').hidden = true;
+    if ($('sharemarks')) $('sharemarks').hidden = true;
   }
 
   // Entry points the native shell calls (relayed from the embedded PARS view).
