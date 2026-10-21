@@ -10,6 +10,13 @@
   const C = (typeof PARSCore !== 'undefined' && PARSCore) || (typeof window !== 'undefined' && window.PARSCore);
   if (!C) { console.warn('[PARS Helper] core not loaded'); return; }
   const hasStorage = typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local;
+  // After the extension is reloaded (chrome://extensions), a PARS tab that was already open keeps running
+  // THIS old copy of the script with no link back to the extension: every chrome.* call throws
+  // "Extension context invalidated". Say what to do instead of dying quietly (2026-10-21).
+  const STALE = 'The helper was updated — reload this PARS page (⌘R), then open the helper again.';
+  let stale = false;   // once true, nothing in this tab can reach storage — stop the fallbacks from masking STALE
+  function ext(fn) { try { return fn(); } catch (e) { if (/context invalidated/i.test(String(e && e.message))) { stale = true; status(STALE); return undefined; } throw e; } }
+  const fallback = (cb, v) => { if (!stale) cb(v); };
 
   let roster = null;
   // iin -> minutes present (the grid's source of truth). Persisted LOCALLY per class+week (chrome.storage
@@ -28,9 +35,9 @@
   const key = () => (roster ? `pars:${roster.meetingDate || 'x'}:${(roster.meta.label || '').replace(/\s+/g, '').slice(0, 48)}` : null);
 
   function fmtDate(d) { return (d && d.length === 8) ? `${d.slice(4, 6)}/${d.slice(6, 8)}/${d.slice(0, 4)}` : (d || '—'); }
-  function saveMarks() { const k = key(); if (k && hasStorage) chrome.storage.local.set({ [k]: minutes }); }
-  function loadMarks(cb) { const k = key(); if (k && hasStorage) chrome.storage.local.get([k], (r) => cb((r && r[k]) || null)); else cb(null); }
-  function clearMarks() { const k = key(); if (k && hasStorage) chrome.storage.local.remove(k); }   // drop IINs once filled
+  function saveMarks() { const k = key(); if (k && hasStorage) ext(() => chrome.storage.local.set({ [k]: minutes })); }
+  function loadMarks(cb) { const k = key(); if (k && hasStorage) { if (ext(() => { chrome.storage.local.get([k], (r) => cb((r && r[k]) || null)); return true; }) !== true) fallback(cb, null); } else cb(null); }
+  function clearMarks() { const k = key(); if (k && hasStorage) ext(() => chrome.storage.local.remove(k)); }   // drop IINs once filled
 
   // ---- build the shell ----
   function build() {
@@ -107,8 +114,8 @@
   // ---- Phase-2 handoff (Universal Clipboard / AirDrop; no cloud) ----
   // Bundle accumulator: add each class (as you click through them in PARS), then Copy the bundle once.
   const BUNDLE_KEY = 'pars.phonebundle';
-  function getBundle(cb) { if (hasStorage) chrome.storage.local.get([BUNDLE_KEY], (r) => cb((r && r[BUNDLE_KEY]) || [])); else cb([]); }
-  function setBundle(arr, cb) { if (hasStorage) chrome.storage.local.set({ [BUNDLE_KEY]: arr }, cb || (() => {})); else if (cb) cb(); }
+  function getBundle(cb) { if (hasStorage) { if (ext(() => { chrome.storage.local.get([BUNDLE_KEY], (r) => cb((r && r[BUNDLE_KEY]) || [])); return true; }) !== true) fallback(cb, []); } else cb([]); }
+  function setBundle(arr, cb) { if (hasStorage) ext(() => chrome.storage.local.set({ [BUNDLE_KEY]: arr }, cb || (() => {}))); else if (cb) cb(); }
   function updateBundleCount(n) { const b = panel && panel.querySelector('.ph-copybundle'); if (b) b.textContent = `📤 Copy bundle (${n})`; }
   function addToBundle() {
     if (!roster || !roster.students.length) { status('Open a class + an open week, then ↻ Reload roster first.'); return; }
@@ -142,8 +149,8 @@
   // (the label/date/filledAt receipt stays so the button can say it's done). Stale entries are
   // inert by construction: the fill matches on label + meeting date, fail closed. ----
   const MARKS_KEY = 'pars.marksbundle';
-  function getMarksBundle(cb) { if (hasStorage) chrome.storage.local.get([MARKS_KEY], (r) => cb((r && r[MARKS_KEY]) || null)); else cb(null); }
-  function setMarksBundle(obj, cb) { if (hasStorage) chrome.storage.local.set({ [MARKS_KEY]: obj }, cb || (() => {})); else if (cb) cb(); }
+  function getMarksBundle(cb) { if (hasStorage) { if (ext(() => { chrome.storage.local.get([MARKS_KEY], (r) => cb((r && r[MARKS_KEY]) || null)); return true; }) !== true) fallback(cb, null); } else cb(null); }
+  function setMarksBundle(obj, cb) { if (hasStorage) ext(() => chrome.storage.local.set({ [MARKS_KEY]: obj }, cb || (() => {}))); else if (cb) cb(); }
 
   /** Show the stored-fill button only when the stored bundle holds an UNFILLED entry for the class
    *  on screen (other classes / stale weeks simply never match → the button stays hidden). */
@@ -216,7 +223,7 @@
     const d = live.meetingDate;
     const date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
     status('Fetching marks from chef…');
-    chrome.runtime.sendMessage(
+    ext(() => chrome.runtime.sendMessage(
       { type: 'chef-pars', date, fullMinutes: live.meta.scheduledMinutes, token: promptedToken },
       (resp) => {
         if (!resp) { status('Chef bridge unavailable — reload the extension (chrome://extensions).'); return; }
@@ -248,7 +255,7 @@
           : '';
         status(`Loaded ${conv.matched} of ${resp.rows.length} chef mark(s) into the grid.${misses} Review, then Fill PARS.`);
       }
-    );
+    ));
   }
 
   function open() { if (!roster) rescan(); panel.classList.add('open'); }
